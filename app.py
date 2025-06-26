@@ -701,27 +701,37 @@ def main():
                             # Exportation avec matplotlib
                             plt.figure(figsize=(10, 6))
                             fig_data = fig.to_dict()
+                            has_valid_traces = False
                             if 'data' in fig_data and len(fig_data['data']) > 0:
                                 for trace in fig_data['data']:
-                                    if trace.get('type') == 'histogram':
-                                        # Handle histogram trace
-                                        if 'x' in trace:
-                                            hist_data = np.array(trace['x'])
+                                    if title == "Analyse des Rendements" and trace.get('type') == 'histogram':
+                                        # Use eda.returns values for histogram
+                                        if eda.returns is not None and not eda.returns.empty:
+                                            hist_data = np.array(eda.returns.dropna())
                                             hist_bins = trace.get('nbinsx', 50)
-                                            counts, bins = np.histogram(hist_data, bins=hist_bins)
-                                            plt.stairs(counts, bins, label=trace.get('name', 'Histogram'), fill=True)
+                                            try:
+                                                counts, bins = np.histogram(hist_data, bins=hist_bins)
+                                                plt.stairs(counts, bins, label=trace.get('name', 'Histogram'), fill=True)
+                                                has_valid_traces = True
+                                            except ValueError as e:
+                                                logger.error(f"Erreur lors du calcul de l'histogramme : {e}")
+                                                continue
                                     elif 'x' in trace and 'y' in trace:
                                         # Handle scatter or line traces
                                         try:
                                             plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
-                                        except TypeError:
-                                            # Skip traces with invalid data
+                                            has_valid_traces = True
+                                        except (TypeError, ValueError) as e:
+                                            logger.error(f"Erreur lors du tracé de la courbe : {e}")
                                             continue
                                 plt.title(title)
                                 plt.xlabel(fig_data['layout'].get('xaxis', {}).get('title', {}).get('text', ''))
                                 plt.ylabel(fig_data['layout'].get('yaxis', {}).get('title', {}).get('text', ''))
-                                if any(trace.get('name') for trace in fig_data['data']):
+                                if has_valid_traces and any(trace.get('name') for trace in fig_data['data'] if trace.get('name')):
                                     plt.legend()
+                            else:
+                                st.warning(f"Impossible de générer l'image pour {title}.", icon="⚠️")
+                            if has_valid_traces:
                                 img_buffer = io.BytesIO()
                                 plt.savefig(img_buffer, format='png', bbox_inches='tight')
                                 plt.close()
@@ -735,7 +745,7 @@ def main():
                                     key=f"download_{filename}_{uuid.uuid4()}"
                                 )
                             else:
-                                st.warning(f"Impossible de générer l'image pour {title}.", icon="⚠️")
+                                st.warning(f"Impossible de générer l'image pour {title} : aucune donnée valide.", icon="⚠️")
                     st.success("✅ Analyse terminée !", icon="✅")
                     st.markdown("</div>", unsafe_allow_html=True)
 
