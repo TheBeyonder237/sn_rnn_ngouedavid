@@ -441,15 +441,46 @@ class FinancialDataEDA:
         return report
 
     def get_display_data(self):
-        """Affiche les données avec les titres originaux et supprime toute référence au ticker dans l'index."""
+        """Affiche les données avec les titres originaux et supprime toute référence au ticker dans l'index ou les colonnes."""
         if self.data is None or self.data.empty:
             return None
         display_data = self.data.copy()
-        # Vérifie et supprime le ticker de l'index si présent (MultiIndex ou autre)
+
+        # --- Gestion des MultiIndex dans les colonnes (le problème TSLA) ---
+        if isinstance(display_data.columns, pd.MultiIndex):
+            # Si le premier niveau du MultiIndex des colonnes est le ticker, supprimez-le
+            # Cela suppose que le ticker est le seul élément du premier niveau
+            # et que les noms de colonnes réels sont dans le deuxième niveau.
+            display_data.columns = display_data.columns.get_level_values(1)
+
+        # --- Gestion des MultiIndex dans l'index des lignes (votre code existant) ---
         if isinstance(display_data.index, pd.MultiIndex):
-            display_data = display_data.reset_index(drop=True)
+            # Assurez-vous que le nom du niveau du ticker est correctement identifié pour le drop
+            # Le niveau 0 est généralement le ticker
+            # Le niveau 1 est généralement la date
+            if len(display_data.index.names) > 1: # S'il y a plus d'un niveau dans le MultiIndex
+                # Trouvez le niveau qui contient le ticker, s'il n'est pas le niveau 0 par défaut
+                # Par défaut, yfinance place le ticker en level 0
+                ticker_level_to_drop = 0 # Supposons que le ticker est au niveau 0
+
+                # Optionnel: si vous voulez être plus robuste et trouver le nom du ticker
+                # for i, name in enumerate(display_data.index.names):
+                #     if name == self.ticker:
+                #         ticker_level_to_drop = i
+                #         break
+
+                display_data = display_data.reset_index(level=ticker_level_to_drop, drop=True)
+            else:
+                # Si c'est un MultiIndex avec un seul niveau qui est le ticker
+                display_data = display_data.reset_index(drop=True)
+
+        # Si ce n'est pas un MultiIndex, mais l'index a un nom qui est le ticker
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
+            # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
+            if 'Date' in display_data.columns:
+                display_data = display_data.set_index('Date')
+
         return display_data
 
 # Model loading function
