@@ -352,6 +352,12 @@ class FinancialDataEDA:
         })
 
     def plot_price_evolution(self):
+        logger.info(f"Colonnes disponibles : {self.data.columns.tolist()}")
+        logger.info(f"Données sample : \n{self.data.head()}")
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Adj Close']
+        if not all(col in self.data.columns for col in required_cols) or self.data[required_cols].isna().all().any():
+            logger.error("Données manquantes ou invalides pour le graphique d'évolution des prix.")
+            return go.Figure()  # Retourne une figure vide si les données sont insuffisantes
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=self.data.index,
@@ -446,58 +452,39 @@ class FinancialDataEDA:
             return None
         display_data = self.data.copy()
 
+        # --- Débogage pour inspecter les colonnes initiales ---
+        logger.info(f"Colonnes initiales : {display_data.columns.tolist()}")
+
         # --- Gérer les MultiIndex dans les colonnes ---
         if isinstance(display_data.columns, pd.MultiIndex):
-            # Basé sur l'image fournie, la structure est probablement (Nom_Colonne, Ticker)
-            # Nous voulons conserver le 'Nom_Colonne' qui est au niveau 0.
-            display_data.columns = display_data.columns.get_level_values(0)
-            
-            # Après avoir aplati, assurez-vous que les noms de colonnes sont uniques.
-            # Cela gère les cas où get_level_values(0) pourrait encore entraîner des doublons
-            # ou si les noms de colonnes par défaut de yfinance ne sont pas uniques.
-            cols = pd.Series(display_data.columns)
-            if cols.duplicated().any():
-                # Pour tout nom de colonne dupliqué, ajoutez un suffixe pour le rendre unique
-                for dup in cols[cols.duplicated()].unique():
-                    # Trouvez tous les indices où ce nom dupliqué apparaît
-                    indices = cols[cols == dup].index.values.tolist()
-                    for i, idx in enumerate(indices):
-                        # N'ajoutez un suffixe qu'à partir de la deuxième occurrence
-                        if i > 0: 
-                            cols.iloc[idx] = f"{dup}_{i}"
-                display_data.columns = cols
-
+            new_column_names = [col[-1] if isinstance(col, tuple) else col for col in display_data.columns]
+            display_data.columns = new_column_names
 
         # --- Gérer les MultiIndex dans l'index des lignes ---
-        # Cette section s'assure que l'index est une date unique sans le ticker.
         if isinstance(display_data.index, pd.MultiIndex):
-            # Si le MultiIndex a plus d'un niveau (par exemple, Symbole, Date)
             if len(display_data.index.names) > 1:
-                # Trouvez le niveau qui n'est pas 'Date' et supprimez-le.
-                # En supposant que le ticker est généralement le premier niveau (level=0)
-                level_to_drop = 0
-                # Si 'Date' est explicitement nommé dans les niveaux d'index, nous nous assurons de le conserver
-                # et de supprimer l'autre niveau.
-                if 'Date' in display_data.index.names:
-                    # Supprimez le niveau qui n'est pas 'Date'
-                    for i, name in enumerate(display_data.index.names):
-                        if name != 'Date':
-                            level_to_drop = i
-                            break
-                display_data = display_data.reset_index(level=level_to_drop, drop=True)
+                display_data = display_data.reset_index()
+                if self.ticker in display_data.columns:
+                    display_data = display_data.drop(columns=[self.ticker])
+                if 'Date' in display_data.columns:
+                    display_data = display_data.set_index('Date')
             else:
-                # S'il n'y a qu'un seul niveau dans le MultiIndex et c'est le ticker lui-même
-                # ou un niveau unique sans nom, il suffit de le réinitialiser.
                 display_data = display_data.reset_index(drop=True)
-
-        # Si ce n'est pas un MultiIndex pour les lignes, mais l'index a un nom qui est le ticker.
-        # Cela gère les cas où l'index est un Index simple mais nommé avec le ticker.
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
-            # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
             if 'Date' in display_data.columns:
                 display_data = display_data.set_index('Date')
-        
+
+        # --- Vérifier et corriger les doublons dans les colonnes ---
+        if not display_data.columns.is_unique:
+            logger.warning(f"Doublons détectés dans les colonnes : {display_data.columns[display_data.columns.duplicated()].tolist()}")
+            display_data = display_data.loc[:, ~display_data.columns.duplicated()]
+            expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+            if len(display_data.columns) == len(expected_columns):
+                display_data.columns = expected_columns
+
+        # --- Vérification finale ---
+        logger.info(f"Colonnes finales : {display_data.columns.tolist()}")
         return display_data
 
 # Model loading function
@@ -717,11 +704,21 @@ def main():
                             if 'data' in fig_data and len(fig_data['data']) > 0:
                                 for trace in fig_data['data']:
                                     if 'x' in trace and 'y' in trace:
-                                        plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
+                                        x_data = trace['x'] if isinstance(trace['x'], (list, np.ndarray)) and all(isinstance(x, (int, float)) for x in trace['x']) else None
+                                        y_data = trace['y'] if isinstance(trace['y'], (list, np.ndarray)) and all(isinstance(y, (int, float)) for y in trace['y']) else None
+                                        if x_data is not None and y_data is not None:
+                                            plt.plot(x_data, y_data, label=trace.get('name', ''))
+                                        elif trace.get('type') == 'candlestick':
+                                            if all(k in trace for k in ['open', 'high', 'low', 'close']):
+                                                plt.plot(trace['x'], trace['close'], label=f"{trace.get('name', '')} Close")
+                                        elif trace.get('type') == 'bar':
+                                            if 'x' in trace and 'y' in trace:
+                                                plt.bar(trace['x'], trace['y'], label=trace.get('name', ''))
                                 plt.title(title)
                                 plt.xlabel(fig_data['layout'].get('xaxis_title', ''))
                                 plt.ylabel(fig_data['layout'].get('yaxis_title', ''))
-                                plt.legend()
+                                if plt.gca().get_lines() or plt.gca().get_patches():
+                                    plt.legend()
                                 img_buffer = io.BytesIO()
                                 plt.savefig(img_buffer, format='png', bbox_inches='tight')
                                 plt.close()
