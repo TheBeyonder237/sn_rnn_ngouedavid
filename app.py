@@ -446,41 +446,58 @@ class FinancialDataEDA:
             return None
         display_data = self.data.copy()
 
-        # --- Débogage pour inspecter les colonnes initiales ---
-        logger.info(f"Colonnes initiales : {display_data.columns.tolist()}")
-
         # --- Gérer les MultiIndex dans les colonnes ---
         if isinstance(display_data.columns, pd.MultiIndex):
-            new_column_names = [col[-1] if isinstance(col, tuple) else col for col in display_data.columns]
-            display_data.columns = new_column_names
+            # Basé sur l'image fournie, la structure est probablement (Nom_Colonne, Ticker)
+            # Nous voulons conserver le 'Nom_Colonne' qui est au niveau 0.
+            display_data.columns = display_data.columns.get_level_values(0)
+            
+            # Après avoir aplati, assurez-vous que les noms de colonnes sont uniques.
+            # Cela gère les cas où get_level_values(0) pourrait encore entraîner des doublons
+            # ou si les noms de colonnes par défaut de yfinance ne sont pas uniques.
+            cols = pd.Series(display_data.columns)
+            if cols.duplicated().any():
+                # Pour tout nom de colonne dupliqué, ajoutez un suffixe pour le rendre unique
+                for dup in cols[cols.duplicated()].unique():
+                    # Trouvez tous les indices où ce nom dupliqué apparaît
+                    indices = cols[cols == dup].index.values.tolist()
+                    for i, idx in enumerate(indices):
+                        # N'ajoutez un suffixe qu'à partir de la deuxième occurrence
+                        if i > 0: 
+                            cols.iloc[idx] = f"{dup}_{i}"
+                display_data.columns = cols
+
 
         # --- Gérer les MultiIndex dans l'index des lignes ---
+        # Cette section s'assure que l'index est une date unique sans le ticker.
         if isinstance(display_data.index, pd.MultiIndex):
+            # Si le MultiIndex a plus d'un niveau (par exemple, Symbole, Date)
             if len(display_data.index.names) > 1:
-                display_data = display_data.reset_index()
-                if self.ticker in display_data.columns:
-                    display_data = display_data.drop(columns=[self.ticker])
-                if 'Date' in display_data.columns:
-                    display_data = display_data.set_index('Date')
+                # Trouvez le niveau qui n'est pas 'Date' et supprimez-le.
+                # En supposant que le ticker est généralement le premier niveau (level=0)
+                level_to_drop = 0
+                # Si 'Date' est explicitement nommé dans les niveaux d'index, nous nous assurons de le conserver
+                # et de supprimer l'autre niveau.
+                if 'Date' in display_data.index.names:
+                    # Supprimez le niveau qui n'est pas 'Date'
+                    for i, name in enumerate(display_data.index.names):
+                        if name != 'Date':
+                            level_to_drop = i
+                            break
+                display_data = display_data.reset_index(level=level_to_drop, drop=True)
             else:
+                # S'il n'y a qu'un seul niveau dans le MultiIndex et c'est le ticker lui-même
+                # ou un niveau unique sans nom, il suffit de le réinitialiser.
                 display_data = display_data.reset_index(drop=True)
+
+        # Si ce n'est pas un MultiIndex pour les lignes, mais l'index a un nom qui est le ticker.
+        # Cela gère les cas où l'index est un Index simple mais nommé avec le ticker.
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
+            # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
             if 'Date' in display_data.columns:
                 display_data = display_data.set_index('Date')
-
-        # --- Vérifier et corriger les doublons dans les colonnes ---
-        if not display_data.columns.is_unique:
-            logger.warning(f"Doublons détectés dans les colonnes : {display_data.columns[display_data.columns.duplicated()].tolist()}")
-            # Générer des noms de colonnes uniques en ajoutant un suffixe numérique si nécessaire
-            display_data = display_data.loc[:, ~display_data.columns.duplicated()]
-            # Réassigner les noms de colonnes attendus (Open, High, Low, Close, Adj Close, Volume)
-            expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-            if len(display_data.columns) == len(expected_columns):
-                display_data.columns = expected_columns
-
-        # --- Vérification finale ---
-        logger.info(f"Colonnes finales : {display_data.columns.tolist()}")
+        
         return display_data
 
 # Model loading function
