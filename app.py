@@ -174,13 +174,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Model hyperparameters
+# Model hyperparameters (adjusted to match saved models)
 MODEL_PARAMS = {
-    'LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
-    'GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
-    'Bidirectional LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
-    'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
-    'CNN-LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
+    'LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
+    'GRU': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 3, 'dropout': 0.2, 'lr': 0.001},
+    'Bidirectional LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
+    'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
+    'CNN-LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
 }
 
 # Cached data download function
@@ -313,22 +313,22 @@ class FinancialDataEDA:
             })
         price_column = self.get_price_column()
         price_stats = [
-            float(self.data[price_column].mean()),
-            float(self.data[price_column].std()),
-            float(self.data[price_column].min()),
-            float(self.data[price_column].max()),
-            float(self.data[price_column].median()),
-            float(stats.skew(self.data[price_column], nan_policy='omit')),
-            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))
+            float(self.data[price_column].mean().iloc[0]),
+            float(self.data[price_column].std().iloc[0]),
+            float(self.data[price_column].min().iloc[0]),
+            float(self.data[price_column].max().iloc[0]),
+            float(self.data[price_column].median().iloc[0]),
+            float(stats.skew(self.data[price_column], nan_policy='omit')[0]),
+            float(stats.kurtosis(self.data[price_column], nan_policy='omit')[0])
         ]
         returns_stats = [
-            float(self.returns.mean()) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.std()) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.min()) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.max()) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.median()) if self.returns is not None and not self.returns.empty else np.nan,
-            float(stats.skew(self.returns, nan_policy='omit')) if self.returns is not None and not self.returns.empty else np.nan,
-            float(stats.kurtosis(self.returns, nan_policy='omit')) if self.returns is not None and not self.returns.empty else np.nan
+            float(self.returns.mean().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.std().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.min().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.max().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.median().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
+            float(stats.skew(self.returns, nan_policy='omit')[0]) if self.returns is not None and not self.returns.empty else np.nan,
+            float(stats.kurtosis(self.returns, nan_policy='omit')[0]) if self.returns is not None and not self.returns.empty else np.nan
         ]
         return pd.DataFrame({
             'Statistique': ['Mean', 'Std Dev', 'Min', 'Max', 'Median', 'Skewness', 'Kurtosis'],
@@ -419,7 +419,7 @@ class FinancialDataEDA:
             f"## Data Insights\n"
             f"- Total Trading Days: {len(self.data)}\n"
             f"- Missing Values: {self.data.isnull().sum().sum()}\n"
-            f"- Price Range: ${self.data[price_column].min():.2f} - ${self.data[price_column].max():.2f}\n"
+            f"- Price Range: ${float(self.data[price_column].min().iloc[0]):.2f} - ${float(self.data[price_column].max().iloc[0]):.2f}\n"
             f"- Available Columns: {', '.join(self.data.columns)}\n"
         )
         return report
