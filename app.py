@@ -1048,7 +1048,7 @@ def main():
                 </ul>
             </div>
             """, unsafe_allow_html=True)
-        st.markdown("<div style='text-align: center; color: #f8fafc; padding: 1em;'>Développé par Ngôue David</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; color: #f8fafc; padding: 1em;'>Développé par Ngoue David</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
