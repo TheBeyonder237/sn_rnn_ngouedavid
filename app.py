@@ -439,6 +439,22 @@ class FinancialDataEDA:
         )
         return report
 
+    def get_display_data(self):
+        """Renomme les colonnes pour supprimer les références au ticker dans l'affichage."""
+        if self.data is None or self.data.empty:
+            return None
+        display_data = self.data.copy()
+        column_mapping = {
+            'Open': 'Ouverture',
+            'High': 'Plus Haut',
+            'Low': 'Plus Bas',
+            'Close': 'Clôture',
+            'Volume': 'Volume',
+            'Adj Close': 'Prix Ajusté'
+        }
+        display_data = display_data.rename(columns=column_mapping)
+        return display_data
+
 # Model loading function
 @st.cache_resource
 def load_model(model_name, input_size, params):
@@ -594,7 +610,7 @@ def main():
         with st.form("eda_form"):
             col1, col2 = st.columns([2, 1])
             with col1:
-                ticker = st.text_input("Symbole de Ticker", value="", placeholder="ex. : TSLA")
+                ticker = st.text_input("Symbole de Ticker", value="TSLA", placeholder="ex. : TSLA")
             with col2:
                 period = st.selectbox("Période", ["1 An", "2 Ans", "3 Ans", "Personnalisée"])
             if period == "Personnalisée":
@@ -634,7 +650,9 @@ def main():
                     )
                     st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
                     st.markdown("<h3 style='color:#bae6fd;'>Aperçu des Données</h3>", unsafe_allow_html=True)
-                    st.dataframe(eda.data.head(), use_container_width=True)
+                    display_data = eda.get_display_data()
+                    if display_data is not None:
+                        st.dataframe(display_data.head(), use_container_width=True)
                     
                     for title, plot_func, filename in [
                         ("Évolution des Prix", eda.plot_price_evolution, "evolution_prix"),
@@ -678,7 +696,7 @@ def main():
         with st.form("pred_form"):
             col1, col2 = st.columns([2, 1])
             with col1:
-                ticker = st.text_input("Symbole de Ticker", value="", placeholder="ex. : TSLA")
+                ticker = st.text_input("Symbole de Ticker", value="TSLA", placeholder="ex. : TSLA")
             with col2:
                 pred_weeks = st.slider("Horizon de Prédiction (Semaines)", 1, 12, 3)
             model = st.selectbox("Sélectionner un Modèle", list(MODEL_PARAMS.keys()))
