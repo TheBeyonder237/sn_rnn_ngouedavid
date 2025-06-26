@@ -25,6 +25,7 @@ logger.handlers = []  # Clear default handlers
 logger.addHandler(logging.StreamHandler())  # Add custom handler
 logger.propagate = False  # Prevent propagation to root logger
 
+import sys
 # Suppress yfinance output by redirecting stdout
 class SuppressOutput:
     def __enter__(self):
