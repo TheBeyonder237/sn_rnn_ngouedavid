@@ -26,7 +26,6 @@ logger.addHandler(logging.StreamHandler())  # Add custom handler
 logger.propagate = False  # Prevent propagation to root logger
 
 # Suppress yfinance output by redirecting stdout
-import sys
 class SuppressOutput:
     def __enter__(self):
         self._original_stdout = sys.stdout
@@ -192,10 +191,11 @@ st.markdown("""
 MODEL_PARAMS = {
     'LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
     'GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 3, 'dropout': 0.2, 'lr': 0.001},
-    'Bidirectional LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
-    'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 256, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},  # Updated hidden_size
+    'Bidirectional LSTM': {'seq_length': 20, 'hidden_size': 256, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
+    'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
     'CNN-LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
 }
+
 # Cached data download function (quiet mode)
 @st.cache_data(show_spinner=False)
 def download_data(_self, ticker, start_date, end_date):
@@ -224,11 +224,15 @@ class DataLoader:
 
     def preprocess_data(self, data):
         data = data.ffill()
-        features = ['Open', 'High', 'Low', 'Close', 'Volume']
+        features = ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        if isinstance(data.columns, pd.MultiIndex):
+            # Flatten MultiIndex to single-level column names
+            available_columns = data.columns.get_level_values(0)
+            data.columns = available_columns
         if 'Adj Close' not in data.columns:
             data['Adj Close'] = data['Close']
-        features.append('Adj Close')
         data = data[features]
+        logger.info(f"Features after preprocessing: {list(data.columns)}")
         return pd.DataFrame(self.scaler.fit_transform(data), columns=features, index=data.index)
 
     def create_sequences(self, data, seq_length):
@@ -304,9 +308,9 @@ class FinancialDataEDA:
             if self.data is None or self.data.empty:
                 raise ValueError(f"Aucune donnée trouvée pour le ticker")
             self.data = self.data.ffill()
-            # Aplatir le MultiIndex si nécessaire
+            # Flatten MultiIndex if necessary
             if isinstance(self.data.columns, pd.MultiIndex):
-                self.data.columns = self.data.columns.get_level_values(0)  # Prendre le premier niveau
+                self.data.columns = self.data.columns.get_level_values(0)
             logger.info("Données EDA téléchargées avec succès")
             return True
         except Exception as e:
@@ -330,26 +334,14 @@ class FinancialDataEDA:
             })
         
         price_column = self.get_price_column()
-        
-        # Handle MultiIndex columns
-        if isinstance(self.data.columns, pd.MultiIndex):
-            # Check if 'Adj Close' or 'Close' exists in the first level of MultiIndex
-            available_columns = self.data.columns.get_level_values(0)
-            if 'Adj Close' in available_columns:
-                price_column = ('Adj Close', self.ticker)
-            elif 'Close' in available_columns:
-                price_column = ('Close', self.ticker)
-            else:
-                raise ValueError("Neither 'Adj Close' nor 'Close' found in data columns")
-        
         price_stats = [
-            float(self.data[price_column].mean()),  # Remove .iloc[0]
-            float(self.data[price_column].std()),   # Remove .iloc[0]
-            float(self.data[price_column].min()),   # Remove .iloc[0]
-            float(self.data[price_column].max()),   # Remove .iloc[0]
-            float(self.data[price_column].median()),  # Remove .iloc[0]
-            float(stats.skew(self.data[price_column], nan_policy='omit')),  # Remove [0]
-            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))  # Remove [0]
+            float(self.data[price_column].mean()),
+            float(self.data[price_column].std()),
+            float(self.data[price_column].min()),
+            float(self.data[price_column].max()),
+            float(self.data[price_column].median()),
+            float(stats.skew(self.data[price_column], nan_policy='omit')),
+            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))
         ]
         
         returns_stats = [
@@ -442,13 +434,7 @@ class FinancialDataEDA:
             rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
-        
-        # Handle MultiIndex columns for display
-        if isinstance(self.data.columns, pd.MultiIndex):
-            columns_str = [col[0] for col in self.data.columns]  # Extract first level
-        else:
-            columns_str = [str(col) for col in self.data.columns]
-            
+        columns_str = [str(col) for col in self.data.columns]
         report = (
             f"# Rapport des Données Financières\n\n"
             f"## Période d'Analyse\n"
@@ -464,12 +450,9 @@ class FinancialDataEDA:
         return report
 
     def get_display_data(self):
-        """Affiche les données avec les titres originaux."""
         if self.data is None or self.data.empty:
             return None
         display_data = self.data.copy()
-        
-        # Gérer l'index des lignes si nécessaire
         if isinstance(display_data.index, pd.MultiIndex):
             if len(display_data.index.names) > 1:
                 level_to_drop = 0
@@ -483,9 +466,9 @@ class FinancialDataEDA:
             display_data = display_data.reset_index(drop=True)
             if 'Date' in display_data.columns:
                 display_data = display_data.set_index('Date')
-        
         return display_data
-    
+
+# StockPricePredictor class
 class StockPricePredictor:
     def __init__(self, ticker, start_date, end_date):
         self.ticker = ticker
@@ -505,23 +488,21 @@ class StockPricePredictor:
             logger.info(f"Forme des données prétraitées : {self.data.shape}")
             return True
         except Exception as e:
-            logger.error(f"Erreur lors du chargement")
+            logger.error(f"Erreur lors du chargement des données : {e}")
             st.error(f"❌ Échec du chargement des données : {e}", icon="❌")
             return False
 
     def load_model(self, model_type):
-        """Load the specified model using the cached load_model function."""
         if not self.load_data():
             return None
         params = MODEL_PARAMS.get(model_type)
         if not params:
             raise ValueError(f"Type de modèle {model_type} non supporté")
-        input_size = 6  # Based on ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        input_size = 6
         model, device = load_model(model_type, input_size, params)
         return model
 
     def predict(self, model, future_steps=10):
-        """Make predictions for the specified number of future steps."""
         if model is None:
             raise ValueError("Modèle non chargé")
         if self.data is None or self.data.empty:
@@ -535,30 +516,33 @@ class StockPricePredictor:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model.eval()
         predictions = []
-        last_sequence = X[-1:]  # Shape: (1, seq_length, input_size)
+        last_sequence = X[-1:]
         
         with torch.no_grad():
             for _ in range(future_steps):
                 input_tensor = torch.tensor(last_sequence, dtype=torch.float32).to(device)
                 pred = model(input_tensor).cpu().numpy().flatten()[0]
                 predictions.append(pred)
-                # Update the sequence with the predicted value
                 new_sequence = last_sequence[:, 1:, :].copy()
                 new_row = last_sequence[:, -1, :].copy()
-                new_row[0, -1] = pred  # Update 'Adj Close' (last feature)
+                new_row[0, -1] = pred
                 last_sequence = np.concatenate([new_sequence, new_row[np.newaxis, np.newaxis, :]], axis=1)
         
-        # Inverse transform predictions
-        predictions_array = np.array(predictions).reshape(-1, 1)  # Shape: (future_steps, 1)
-        dummy_array = np.zeros((future_steps, 5))  # Shape: (future_steps, 5) for other features
-        predictions_full = np.hstack([dummy_array, predictions_array])  # Shape: (future_steps, 6)
+        predictions_array = np.array(predictions).reshape(-1, 1)
+        dummy_array = np.zeros((future_steps, 5))
+        logger.info(f"Shape of dummy_array: {dummy_array.shape}")
+        logger.info(f"Shape of predictions_array: {predictions_array.shape}")
+        predictions_full = np.hstack([dummy_array, predictions_array])
+        logger.info(f"Shape of predictions_full: {predictions_full.shape}")
+        
         try:
-            predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]  # Extract 'Adj Close'
+            if not hasattr(self.scaler, 'scale_'):
+                self.scaler.fit(self.data)
+            predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]
         except Exception as e:
             logger.error(f"Erreur lors de l'inverse transform : {e}")
             raise ValueError(f"Erreur lors de l'inverse transform : {e}")
         
-        # Generate future dates
         last_date = self.data.index[-1]
         future_dates = [last_date + timedelta(days=i + 1) for i in range(future_steps)]
         
@@ -571,23 +555,28 @@ def load_model(model_name, input_size, params):
         if input_size != 6:
             raise ValueError(f"6 caractéristiques d'entrée attendues, trouvé {input_size}. Assurez-vous que les données incluent 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'.")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if model_name == 'LSTM Bidirectionnel' or model_name == 'GRU Bidirectionnel':
+        
+        if model_name in ['Bidirectional LSTM', 'Bidirectional GRU']:
             model_type = 'LSTM' if 'LSTM' in model_name else 'GRU'
             model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], model_type, params['dropout']).to(device)
         elif model_name == 'CNN-LSTM':
             model = CNNLSTMModel(input_size, params['hidden_size'], params['num_layers']).to(device)
         else:
             model = RNNModel(input_size, params['hidden_size'], params['num_layers'], model_type=model_name, dropout=params['dropout']).to(device)
+        
         model_path = f"saved_models/best_model_{model_name}.pth"
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Fichier de modèle {model_path} non trouvé. Assurez-vous que tous les fichiers de modèle sont dans le répertoire 'saved_models'.")
+        
         checkpoint = torch.load(model_path, map_location=device)
-        # Adjust for bidirectional GRU hidden size
-        if model_name == 'GRU Bidirectionnel':
-            if checkpoint['fc.weight'].shape[1] != params['hidden_size'] * 2:
-                logger.warning(f"Ajustement de la taille cachée pour GRU Bidirectionnel à {checkpoint['fc.weight'].shape[1] // 2}")
-                params['hidden_size'] = checkpoint['fc.weight'].shape[1] // 2
-                model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], 'GRU', params['dropout']).to(device)
+        
+        if model_name in ['Bidirectional LSTM', 'Bidirectional GRU']:
+            expected_hidden_size = checkpoint['fc.weight'].shape[1] // 2
+            if expected_hidden_size != params['hidden_size']:
+                logger.warning(f"Ajustement de la taille cachée pour {model_name} à {expected_hidden_size}")
+                params['hidden_size'] = expected_hidden_size
+                model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], model_type, params['dropout']).to(device)
+        
         model.load_state_dict(checkpoint)
         model.eval()
         logger.info(f"Modèle {model_name} chargé")
@@ -782,7 +771,6 @@ def main():
                         fig = plot_func()
                         if fig:
                             st.plotly_chart(fig, use_container_width=True)
-                            # Exportation avec matplotlib
                             plt.figure(figsize=(10, 6))
                             fig_data = fig.to_dict()
                             has_valid_traces = False
@@ -792,7 +780,6 @@ def main():
                                     trace_name = trace.get('name', '')
                                     logger.info(f"Processing trace: type={trace_type}, name={trace_name}, keys={list(trace.keys())}")
                                     
-                                    # Convert x and y data to arrays, handling datetime and dictionaries
                                     def to_numeric_array(data, name):
                                         if isinstance(data, (list, np.ndarray, pd.Series)):
                                             try:
@@ -804,7 +791,7 @@ def main():
                                                 logger.error(f"Erreur conversion {name}: {e}")
                                                 return np.array([])
                                         return np.array([])
-
+                                    
                                     if trace_type == 'candlestick':
                                         try:
                                             x_data = to_numeric_array(trace.get('x', []), 'x')
@@ -926,15 +913,15 @@ def main():
                 try:
                     predictions, future_dates = predictor.predict(model_instance, future_steps=future_steps)
                     fig = go.Figure()
-                    price_column = ('Adj Close', ticker) if isinstance(predictor.data.columns, pd.MultiIndex) else 'Adj Close'
-                    # Historical data
+                    price_column = 'Adj Close'
+                    if isinstance(predictor.data.columns, pd.MultiIndex):
+                        price_column = ('Adj Close', ticker) if ('Adj Close', ticker) in predictor.data.columns else 'Adj Close'
                     fig.add_trace(go.Scatter(
                         x=predictor.data.index,
                         y=predictor.data[price_column],
                         mode='lines',
                         name='Historique'
                     ))
-                    # Predicted data
                     fig.add_trace(go.Scatter(
                         x=future_dates,
                         y=predictions,
@@ -951,7 +938,6 @@ def main():
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # Exportation avec matplotlib
                     plt.figure(figsize=(10, 6))
                     fig_data = fig.to_dict()
                     has_valid_traces = False
@@ -960,6 +946,18 @@ def main():
                             trace_type = trace.get('type', '')
                             trace_name = trace.get('name', '')
                             logger.info(f"Processing prediction trace: type={trace_type}, name={trace_name}, keys={list(trace.keys())}")
+                            
+                            def to_numeric_array(data, name):
+                                if isinstance(data, (list, np.ndarray, pd.Series)):
+                                    try:
+                                        if isinstance(data[0], dict):
+                                            logger.warning(f"{name} contains dictionaries: {data[:5]}")
+                                            return np.array([])
+                                        return np.array(data, dtype=np.float64 if not isinstance(data[0], pd.Timestamp) else object)
+                                    except (TypeError, ValueError) as e:
+                                        logger.error(f"Erreur conversion {name}: {e}")
+                                        return np.array([])
+                                return np.array([])
                             
                             try:
                                 x_data = to_numeric_array(trace.get('x', []), 'x')
@@ -996,7 +994,7 @@ def main():
                             key=f"download_pred_{model_type}_{uuid.uuid4()}"
                         )
                     else:
-                        st.warning(f"Impossible de générer l'image pour {model_type} : aucune donnée valide.", icon="⚠️")
+                        st.warning(f"Impossible de générer l'image pour {model_type} : aucune données valide.", icon="⚠️")
                     
                     st.success(f"✅ Prédictions générées avec {model_type} !", icon="✅")
                 except Exception as e:
