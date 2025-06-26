@@ -486,6 +486,80 @@ class FinancialDataEDA:
                 display_data = display_data.set_index('Date')
         
         return display_data
+    
+class StockPricePredictor:
+    def __init__(self, ticker, start_date, end_date):
+        self.ticker = ticker
+        self.start_date = start_date
+        self.end_date = end_date
+        self.data_loader = DataLoader(ticker, start_date, end_date)
+        self.data = None
+        self.scaler = MinMaxScaler()
+
+    def load_data(self):
+        """Load and preprocess the stock data."""
+        try:
+            self.data = self.data_loader.download_data()
+            if self.data is None or self.data.empty:
+                raise ValueError(f"Aucune donnée trouvée pour le ticker {self.ticker}")
+            self.data = self.data_loader.preprocess_data(self.data)
+            logger.info(f"Données pour {self.ticker} chargées et prétraitées avec succès")
+            return True
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement des données : {e}")
+            st.error(f"❌ Échec du chargement des données : {e}", icon="❌")
+            return False
+
+    def load_model(self, model_type):
+        """Load the specified model using the cached load_model function."""
+        if not self.load_data():
+            return None
+        params = MODEL_PARAMS.get(model_type)
+        if not params:
+            raise ValueError(f"Type de modèle {model_type} non supporté")
+        input_size = 6  # Based on ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        model, device = load_model(model_type, input_size, params)
+        return model
+
+    def predict(self, model, future_steps=10):
+        """Make predictions for the specified number of future steps."""
+        if model is None:
+            raise ValueError("Modèle non chargé")
+        if self.data is None or self.data.empty:
+            raise ValueError("Aucune donnée disponible pour la prédiction")
+        
+        seq_length = MODEL_PARAMS.get(model.__class__.__name__, {}).get('seq_length', 20)
+        X, _ = self.data_loader.create_sequences(self.data, seq_length)
+        if len(X) == 0:
+            raise ValueError("Pas assez de données pour créer des séquences")
+        
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.eval()
+        predictions = []
+        last_sequence = X[-1:]  # Take the last sequence for prediction
+        
+        with torch.no_grad():
+            for _ in range(future_steps):
+                input_tensor = torch.tensor(last_sequence, dtype=torch.float32).to(device)
+                pred = model(input_tensor).cpu().numpy().flatten()[0]
+                predictions.append(pred)
+                # Update the sequence with the predicted value
+                new_sequence = last_sequence[:, 1:, :].copy()
+                new_row = last_sequence[:, -1, :].copy()
+                new_row[0, 3] = pred  # Assuming 'Adj Close' is at index 3
+                last_sequence = np.concatenate([new_sequence, new_row[np.newaxis, np.newaxis, :]], axis=1)
+        
+        # Inverse transform predictions
+        predictions_array = np.array(predictions).reshape(-1, 1)
+        dummy_array = np.zeros((len(predictions), 5))  # For other features
+        predictions_full = np.concatenate([dummy_array, predictions_array], axis=1)
+        predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]
+        
+        # Generate future dates
+        last_date = self.data.index[-1]
+        future_dates = [last_date + timedelta(days=i + 1) for i in range(future_steps)]
+        
+        return predictions_scaled, future_dates
 
 # Model loading function
 @st.cache_resource
