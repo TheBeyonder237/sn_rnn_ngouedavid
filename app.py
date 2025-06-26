@@ -444,9 +444,9 @@ class FinancialDataEDA:
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
         
-        # Modification ici : Extraire uniquement le premier niveau des colonnes
+        # Handle MultiIndex columns for display
         if isinstance(self.data.columns, pd.MultiIndex):
-            columns_str = [col[0] for col in self.data.columns]  # Prendre le premier niveau (nom de la colonne)
+            columns_str = [col[0] for col in self.data.columns]  # Extract first level
         else:
             columns_str = [str(col) for col in self.data.columns]
             
@@ -459,7 +459,7 @@ class FinancialDataEDA:
             f"## Insights sur les Données\n"
             f"- Nombre Total de Jours de Trading : {len(self.data)}\n"
             f"- Valeurs Manquantes : {self.data.isnull().sum().sum()}\n"
-            f"- Plage de Prix : ${float(self.data[price_column].min().iloc[0]):.2f} - ${float(self.data[price_column].max().iloc[0]):.2f}\n"
+            f"- Plage de Prix : ${float(self.data[price_column].min()):.2f} - ${float(self.data[price_column].max()):.2f}\n"
             f"- Colonnes Disponibles : {', '.join(columns_str)}\n"
         )
         return report
