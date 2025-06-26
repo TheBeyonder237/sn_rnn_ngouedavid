@@ -183,6 +183,20 @@ MODEL_PARAMS = {
     'CNN-LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
 }
 
+# Cached data download function
+@st.cache_data
+def download_data(_self, ticker, start_date, end_date):
+    try:
+        data = yf.download(ticker, start=start_date, end=end_date, auto_adjust=False)
+        if data.empty:
+            raise ValueError(f"No data found for {ticker}")
+        logger.info(f"Data downloaded for {ticker}")
+        return data
+    except Exception as e:
+        logger.error(f"Error downloading data for {ticker}: {e}")
+        st.error(f"❌ Failed to download data: {e}", icon="❌")
+        return None
+
 # DataLoader class
 class DataLoader:
     def __init__(self, ticker, start_date, end_date):
@@ -191,23 +205,12 @@ class DataLoader:
         self.end_date = end_date
         self.scaler = MinMaxScaler()
 
-    @st.cache_data
     def download_data(self):
-        try:
-            data = yf.download(self.ticker, start=self.start_date, end=self.end_date, auto_adjust=False)
-            if data.empty:
-                raise ValueError(f"No data found for {self.ticker}")
-            logger.info(f"Data downloaded for {self.ticker}")
-            return data
-        except Exception as e:
-            logger.error(f"Error downloading data for {self.ticker}: {e}")
-            st.error(f"❌ Failed to download data: {e}", icon="❌")
-            return None
+        return download_data(self, self.ticker, self.start_date, self.end_date)
 
     def preprocess_data(self, data):
         data = data.ffill()
         features = ['Open', 'High', 'Low', 'Close', 'Volume']
-        # Ensure Adj Close is included, copy Close if unavailable
         if 'Adj Close' not in data.columns:
             data['Adj Close'] = data['Close']
         features.append('Adj Close')
@@ -398,8 +401,8 @@ class FinancialDataEDA:
         stats_df = self.basic_statistics()
         stats_md = "| Statistique | Prix | Rendements |\n|------------|------|------------|\n"
         for _, row in stats_df.iterrows():
-            prix = '-' if pd.isna(row['Prix']) else f"{row['Prix']:.4f}"
-            rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
+            prix = '-' if pd.isna(row['Prix'].iloc[0]) else f"{row['Prix'].iloc[0]:.4f}"
+            rendements = '-' if pd.isna(row['Rendements'].iloc[0]) else f"{row['Rendements'].iloc[0]:.4f}"
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
         report = (
@@ -432,7 +435,7 @@ def load_model(model_name, input_size, params):
             model = RNNModel(input_size, params['hidden_size'], params['num_layers'], model_name, params['dropout']).to(device)
         model_path = f"saved_models/best_model_{model_name}.pth"
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file {model_path} not found")
+            raise FileNotFoundError(f"Model file {model_path} not found. Ensure all model files are in the 'saved_models' directory.")
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         logger.info(f"Loaded model {model_name}")
