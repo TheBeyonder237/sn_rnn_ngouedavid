@@ -568,7 +568,7 @@ def load_model(model_name, input_size, params):
         if input_size != 6:
             raise ValueError(f"6 caractéristiques d'entrée attendues, trouvé {input_size}. Assurez-vous que les données incluent 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'.")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if model_name.startswith('LSTM Bidirectionnel'):
+        if model_name.startswith('Bidirectional LSTM'):
             model_type = 'LSTM' if 'LSTM' in model_name else 'GRU'
             model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], model_type, params['dropout']).to(device)
         elif model_name == 'CNN-LSTM':
