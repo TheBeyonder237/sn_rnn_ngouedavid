@@ -24,6 +24,16 @@ logger.handlers = []  # Clear default handlers
 logger.addHandler(logging.StreamHandler())  # Add custom handler
 logger.propagate = False  # Prevent propagation to root logger
 
+# Suppress yfinance output by redirecting stdout
+import sys
+class SuppressOutput:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
+
 # Lottie animation loader
 def load_lottieurl(url):
     try:
@@ -190,9 +200,8 @@ MODEL_PARAMS = {
 @st.cache_data(show_spinner=False)
 def download_data(_self, ticker, start_date, end_date):
     try:
-        # Suppress yfinance progress bar
-        yf.pdr_override()
-        data = yf.download(ticker, start=start_date, end=end_date, auto_adjust=False, progress=False)
+        with SuppressOutput():
+            data = yf.download(ticker, start=start_date, end=end_date, auto_adjust=False, progress=False)
         if data.empty:
             raise ValueError(f"No data found for ticker")
         logger.info("Data downloaded successfully")
@@ -292,7 +301,7 @@ class FinancialDataEDA:
     def download_data(self):
         try:
             self.data = download_data(self, self.ticker, self.start_date, self.end_date)
-            if self.data.empty:
+            if self.data is None or self.data.empty:
                 raise ValueError(f"No data found for ticker")
             self.data = self.data.ffill()
             logger.info("EDA data downloaded successfully")
@@ -731,7 +740,7 @@ def main():
                 price_col = 'Adj Close'
                 fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data[price_col], name='Historical'))
                 fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Predicted', line=dict(color='#bae6fd')))
-                fig.update_layout(title=f"Price Prediction", xaxis_title="Date", yaxis_title="Price ($)", template='plotly_white')
+                fig.update_layout(title="Price Prediction", xaxis_title="Date", yaxis_title="Price ($)", template='plotly_white')
                 st.plotly_chart(fig, use_container_width=True)
                 try:
                     img_buffer = io.BytesIO()
