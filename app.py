@@ -17,6 +17,7 @@ from streamlit_option_menu import option_menu
 import uuid
 import scipy.stats as stats
 import matplotlib.pyplot as plt
+import sys
 
 # Configure logging to suppress ticker-specific messages
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +26,6 @@ logger.handlers = []  # Clear default handlers
 logger.addHandler(logging.StreamHandler())  # Add custom handler
 logger.propagate = False  # Prevent propagation to root logger
 
-import sys
 # Suppress yfinance output by redirecting stdout
 class SuppressOutput:
     def __enter__(self):
@@ -227,14 +227,16 @@ class DataLoader:
         data = data.ffill()
         features = ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
         if isinstance(data.columns, pd.MultiIndex):
-            # Flatten MultiIndex to single-level column names
             available_columns = data.columns.get_level_values(0)
             data.columns = available_columns
         if 'Adj Close' not in data.columns:
             data['Adj Close'] = data['Close']
+        if not all(f in data.columns for f in features):
+            raise ValueError(f"Colonnes attendues {features} non trouvées dans les données")
         data = data[features]
         logger.info(f"Features after preprocessing: {list(data.columns)}")
-        return pd.DataFrame(self.scaler.fit_transform(data), columns=features, index=data.index)
+        scaled_data = self.scaler.fit_transform(data)
+        return pd.DataFrame(scaled_data, columns=features, index=data.index)
 
     def create_sequences(self, data, seq_length):
         X, y = [], []
@@ -309,7 +311,6 @@ class FinancialDataEDA:
             if self.data is None or self.data.empty:
                 raise ValueError(f"Aucune donnée trouvée pour le ticker")
             self.data = self.data.ffill()
-            # Flatten MultiIndex if necessary
             if isinstance(self.data.columns, pd.MultiIndex):
                 self.data.columns = self.data.columns.get_level_values(0)
             logger.info("Données EDA téléchargées avec succès")
@@ -504,6 +505,7 @@ class StockPricePredictor:
         return model
 
     def predict(self, model, future_steps=10):
+        """Make predictions for the specified number of future steps."""
         if model is None:
             raise ValueError("Modèle non chargé")
         if self.data is None or self.data.empty:
@@ -517,29 +519,34 @@ class StockPricePredictor:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model.eval()
         predictions = []
-        last_sequence = X[-1:]
+        last_sequence = X[-1:]  # Shape: (1, seq_length, input_size)
+        input_size = last_sequence.shape[-1]  # Should be 6
+        
+        logger.info(f"Initial last_sequence shape: {last_sequence.shape}")
         
         with torch.no_grad():
             for _ in range(future_steps):
                 input_tensor = torch.tensor(last_sequence, dtype=torch.float32).to(device)
                 pred = model(input_tensor).cpu().numpy().flatten()[0]
                 predictions.append(pred)
-                new_sequence = last_sequence[:, 1:, :].copy()
-                new_row = last_sequence[:, -1, :].copy()
-                new_row[0, -1] = pred
-                last_sequence = np.concatenate([new_sequence, new_row[np.newaxis, np.newaxis, :]], axis=1)
+                new_sequence = last_sequence[:, 1:, :].copy()  # Shape: (1, seq_length-1, input_size)
+                new_row = last_sequence[:, -1, :].copy()  # Shape: (1, input_size)
+                new_row[0, -1] = pred  # Update 'Adj Close' (last feature)
+                last_sequence = np.concatenate([new_sequence, new_row[:, np.newaxis, :]], axis=1)  # Shape: (1, seq_length, input_size)
+                logger.info(f"Updated last_sequence shape: {last_sequence.shape}")
         
-        predictions_array = np.array(predictions).reshape(-1, 1)
-        dummy_array = np.zeros((future_steps, 5))
+        predictions_array = np.array(predictions).reshape(-1, 1)  # Shape: (future_steps, 1)
+        dummy_array = np.zeros((future_steps, input_size - 1))  # Shape: (future_steps, 5)
         logger.info(f"Shape of dummy_array: {dummy_array.shape}")
         logger.info(f"Shape of predictions_array: {predictions_array.shape}")
-        predictions_full = np.hstack([dummy_array, predictions_array])
+        predictions_full = np.hstack([dummy_array, predictions_array])  # Shape: (future_steps, input_size)
         logger.info(f"Shape of predictions_full: {predictions_full.shape}")
         
         try:
             if not hasattr(self.scaler, 'scale_'):
+                logger.info(f"Fitting scaler to data with shape: {self.data.shape}")
                 self.scaler.fit(self.data)
-            predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]
+            predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]  # Extract 'Adj Close'
         except Exception as e:
             logger.error(f"Erreur lors de l'inverse transform : {e}")
             raise ValueError(f"Erreur lors de l'inverse transform : {e}")
@@ -995,7 +1002,7 @@ def main():
                             key=f"download_pred_{model_type}_{uuid.uuid4()}"
                         )
                     else:
-                        st.warning(f"Impossible de générer l'image pour {model_type} : aucune données valide.", icon="⚠️")
+                        st.warning(f"Impossible de générer l'image pour {model_type} : aucune donnée valide.", icon="⚠️")
                     
                     st.success(f"✅ Prédictions générées avec {model_type} !", icon="✅")
                 except Exception as e:
