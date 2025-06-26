@@ -26,15 +26,23 @@ warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# CSS Styling
+# Configuration de la page
+st.set_page_config(
+    page_title="Stock Analyzer",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Nouvelle palette de couleurs et style CSS inspiré de NLP Magic Hub
 color_palette = {
-    "primary": "#6B46C1",
-    "secondary": "#96A6BB",
-    "accent": "#A78BFA",
-    "text": "#F3F4F6",
-    "success": "#34D399",
-    "warning": "#FBBF24",
-    "error": "#F87171"
+    "primary": "#6B46C1",  # Violet principal
+    "secondary": "#96A6BB",  # Fond sombre
+    "accent": "#A78BFA",  # Violet clair
+    "text": "#F3F4F6",  # Texte clair
+    "success": "#34D399",  # Vert succès
+    "warning": "#FBBF24",  # Jaune warning
+    "error": "#F87171"  # Rouge erreur
 }
 
 st.markdown(f"""
@@ -52,10 +60,11 @@ st.markdown(f"""
     }}
 
     .stApp {{
-        background: linear-gradient(120deg, #475569 0%, #334155 100%);
+        background-color: var(--secondary);
         font-family: 'Inter', sans-serif;
     }}
 
+    /* Typographie */
     h1, h2, h3, h4 {{
         color: var(--text);
         font-weight: 600;
@@ -67,12 +76,14 @@ st.markdown(f"""
         line-height: 1.6;
     }}
 
+    /* Sidebar */
     .sidebar .sidebar-content {{
-        background: linear-gradient(120deg, #475569 0%, #334155 100%);
+        background-color: var(--secondary);
         border-right: 1px solid rgba(255,255,255,0.1);
         padding: 1.5rem;
     }}
 
+    /* Boutons */
     .stButton>button {{
         background-color: var(--primary);
         color: var(--text);
@@ -88,6 +99,7 @@ st.markdown(f"""
         box-shadow: 0 4px 12px rgba(107, 70, 193, 0.3);
     }}
 
+    /* Formulaires */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea {{
         background-color: #2D3748;
         color: var(--text);
@@ -95,36 +107,22 @@ st.markdown(f"""
         border: 1px solid rgba(255,255,255,0.1);
     }}
 
+    /* Selectbox et Slider */
     .stSelectbox, .stSlider, .stCheckbox {{
         background-color: #2D3748;
         border-radius: 8px;
         border: 1px solid rgba(255,255,255,0.1);
     }}
 
-    .stTabs [data-baseweb="tab"] {{
-        color: var(--text);
-        background-color: #2D3748;
+    /* Alertes */
+    .stAlert {{
         border-radius: 8px;
-        margin-right: 0.5rem;
-        padding: 0.5rem 1rem;
+        border-left: 4px solid;
     }}
 
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
-        background-color: var(--primary);
-        color: var(--text);
-    }}
-
-    .section-card {{
-        background: linear-gradient(120deg, #475569 0%, #334155 100%);
-        padding: 2rem;
-        border-radius: 18px;
-        color: #e0f0ff;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    }}
-
+    /* Animation pour les containers */
     .custom-container {{
-        background: #2D3748;
+        background-color: #2D3748;
         padding: 1.5rem;
         border-radius: 8px;
         border-left: 4px solid var(--primary);
@@ -136,6 +134,13 @@ st.markdown(f"""
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }}
 
+    /* Séparateurs */
+    hr {{
+        border-color: rgba(255,255,255,0.1);
+        margin: 1.5rem 0;
+    }}
+
+    /* Badges */
     .badge {{
         background-color: var(--accent);
         color: var(--text);
@@ -146,6 +151,7 @@ st.markdown(f"""
         font-size: 0.9em;
     }}
 
+    /* Boutons de contact */
     .about-contact-btn {{
         background-color: var(--primary);
         color: var(--text);
@@ -160,21 +166,8 @@ st.markdown(f"""
         background-color: var(--accent);
         transform: translateY(-2px);
     }}
-
-    hr {{
-        border-color: rgba(255,255,255,0.1);
-        margin: 1.5rem 0;
-    }}
 </style>
 """, unsafe_allow_html=True)
-
-# Page Configuration
-st.set_page_config(
-    page_title="Stock Analyzer",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Load Lottie animation
 def load_lottieurl(url):
@@ -246,7 +239,7 @@ class DataLoader:
             except Exception as e:
                 logger.error(f"Erreur lors du téléchargement (tentative {attempt}/{max_retries}): {str(e)}")
                 if attempt == max_retries:
-                    st.error(f"Échec après {max_retries} tentatives. Vérifiez le ticker ou la connexion.")
+                    st.error(f"❌ Échec après {max_retries} tentatives. Vérifiez le ticker ou la connexion.", icon="❌")
                     return None
                 time.sleep(delay)
 
@@ -357,7 +350,7 @@ class FinancialDataEDA:
             self.data = self.data.fillna(method='ffill')
             return True
         except Exception as e:
-            st.error(f"Erreur lors du téléchargement des données: {str(e)}")
+            st.error(f"❌ Erreur lors du téléchargement des données: {str(e)}", icon="❌")
             return False
     
     def get_price_column(self):
@@ -579,42 +572,57 @@ def load_model(model_name, input_size, params, device):
         model.eval()
         return model
     except Exception as e:
-        st.error(f"Erreur lors du chargement du modèle {model_name}: {str(e)}")
+        st.error(f"❌ Erreur lors du chargement du modèle {model_name}: {str(e)}", icon="❌")
         return None
 
-# Sidebar
+# Barre latérale
 with st.sidebar:
     st.markdown("<h2 style='color: var(--primary);'>📈 Stock Analyzer</h2>", unsafe_allow_html=True)
     
     st.markdown("<div class='custom-container'><h4 style='color: var(--accent);'>Navigation</h4></div>", unsafe_allow_html=True)
-    selected = st.radio(
+    page = st.radio(
         "",
         ["🏠 Accueil", "📊 EDA", "🔮 Predictions", "ℹ️ À propos"],
         label_visibility="collapsed"
     )
     
     st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("<div class='custom-container'><h4 style='color: var(--accent);'>Configuration</h4></div>", unsafe_allow_html=True)
+    
+    # Section fictive pour imiter l'authentification de NLP Magic Hub
+    with st.form("config_form"):
+        config_key = st.text_input("Clé de configuration (optionnel)", type="password", placeholder="Entrez une clé (non requis)")
+        if st.form_submit_button("Vérifier", use_container_width=True):
+            if config_key:
+                st.success("✅ Clé vérifiée (simulation)", icon="✅")
+            else:
+                st.warning("⚠️ Aucune clé saisie, configuration par défaut utilisée", icon="⚠️")
+    
+    st.markdown("""
+    <div style='font-size: 0.9em; color: var(--accent);'>
+        <a href='https://github.com/TheBeyonder237' target='_blank'>🔗 GitHub du créateur</a><br>
+        <a href='mailto:ngouedavidrogeryannick@gmail.com'>🔗 Contacter par email</a>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("""
     <div style='text-align: center; color: var(--text); font-size: 0.9em;'>
         <p>Créé par Ngôue David</p>
         <p>📧 ngouedavidrogeryannick@gmail.com</p>
+        <p>Projet RNN pour la finance</p>
     </div>
     """, unsafe_allow_html=True)
 
-# Main Content
-if selected == "🏠 Accueil":
-    st.markdown("""
-    <div class='section-card'>
-        <h1 class='section-title'>📈 Stock Analyzer</h1>
-        <p style='color:#e0f0ff;'>Une application puissante pour l'analyse et la prédiction des prix boursiers avec des modèles RNN pré-entraînés.</p>
-    </div>
-    """, unsafe_allow_html=True)
+# Contenu principal
+if page == "🏠 Accueil":
+    st.markdown("<h1 style='color: var(--primary);'>📈 Stock Analyzer</h1>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([2, 1], gap="large")
     with col1:
         st.markdown("""
         <div class='custom-container'>
-            <h3>Fonctionnalités</h3>
+            <p>Explorez et prédisez les tendances boursières avec des modèles RNN avancés :</p>
             <ul>
                 <li>📊 Analyse exploratoire des données financières</li>
                 <li>🔮 Prédictions futures avec modèles RNN pré-entraînés</li>
@@ -623,31 +631,41 @@ if selected == "🏠 Accueil":
             </ul>
         </div>
         """, unsafe_allow_html=True)
+        
+        with st.expander("📌 Guide de démarrage"):
+            st.markdown("""
+            1. Assurez-vous que les modèles pré-entraînés sont dans le dossier `saved_models/`
+            2. Sélectionnez une page dans la barre latérale
+            3. Pour l'EDA, entrez un ticker et une période
+            4. Pour les prédictions, choisissez un modèle et une durée
+            5. Explorez les résultats et téléchargez les rapports !
+            """)
+    
     with col2:
         st.markdown("""
         <div class='custom-container'>
-            <h3>Technologies</h3>
+            <h4 style='color: var(--accent);'>🛠️ Stack Technique</h4>
             <ul>
-                <li><span class='badge'>yfinance</span></li>
-                <li><span class='badge'>PyTorch</span></li>
-                <li><span class='badge'>Streamlit</span></li>
-                <li><span class='badge'>Plotly</span></li>
+                <li><strong>yfinance</strong>: Données boursières</li>
+                <li><strong>PyTorch</strong>: Modèles RNN</li>
+                <li><strong>Streamlit</strong>: Interface</li>
+                <li><strong>Plotly</strong>: Visualisations</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
 
-elif selected == "📊 EDA":
-    st.markdown("<h2 style='color: var(--accent);'>Exploratory Data Analysis</h2>", unsafe_allow_html=True)
+elif page == "📊 EDA":
+    st.markdown("<h1 style='color: var(--primary);'>📊 Analyse Exploratoire des Données</h1>", unsafe_allow_html=True)
     
     with st.form("eda_form"):
         st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
-            entreprise = st.text_input("Symbole boursier", value="TSLA")
+            entreprise = st.text_input("Symbole boursier", value="TSLA", placeholder="Ex: TSLA")
         with col2:
             period = st.selectbox("Période", ["1 an", "2 ans", "3 ans", "4 ans", "Personnalisée"])
         with col3:
-            submit_eda = st.form_submit_button("Analyser", use_container_width=True)
+            submit_eda = st.form_submit_button("🔎 Analyser", use_container_width=True)
         
         if period == "Personnalisée":
             col4, col5 = st.columns(2)
@@ -663,27 +681,29 @@ elif selected == "📊 EDA":
         st.markdown("</div>", unsafe_allow_html=True)
     
     if submit_eda:
-        with st.spinner("Analyse des données..."):
+        with st.spinner("🔍 Analyse des données en cours..."):
             eda = FinancialDataEDA(entreprise, start_date, end_date)
             report = eda.generate_report()
             if report:
-                st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-                st.markdown("<h3>Rapport</h3>", unsafe_allow_html=True)
+                st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
+                st.markdown("<h4>Rapport</h4>", unsafe_allow_html=True)
                 st.markdown(report, unsafe_allow_html=True)
                 
                 report_bytes = report.encode('utf-8')
                 st.download_button(
-                    label="Télécharger le rapport",
+                    label="📥 Télécharger le rapport",
                     data=report_bytes,
                     file_name=f"eda_report_{entreprise}.md",
                     mime="text/markdown",
                     use_container_width=True
                 )
                 
-                st.markdown("<h3>Aperçu des Données</h3>", unsafe_allow_html=True)
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.markdown("<h4>Aperçu des Données</h4>", unsafe_allow_html=True)
                 st.dataframe(eda.data.head(), use_container_width=True)
                 
-                st.markdown("<h3>Visualisations</h3>", unsafe_allow_html=True)
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.markdown("<h4>Visualisations</h4>", unsafe_allow_html=True)
                 
                 # Price Evolution
                 fig_price = eda.plot_price_evolution()
@@ -692,7 +712,7 @@ elif selected == "📊 EDA":
                     img_buffer = io.BytesIO()
                     fig_price.write_image(img_buffer, format="png")
                     st.download_button(
-                        label="Télécharger le graphique de prix",
+                        label="📥 Télécharger le graphique de prix",
                         data=img_buffer,
                         file_name=f"price_evolution_{entreprise}.png",
                         mime="image/png",
@@ -706,7 +726,7 @@ elif selected == "📊 EDA":
                     img_buffer = io.BytesIO()
                     fig_volume.write_image(img_buffer, format="png")
                     st.download_button(
-                        label="Télécharger le graphique de volume",
+                        label="📥 Télécharger le graphique de volume",
                         data=img_buffer,
                         file_name=f"volume_{entreprise}.png",
                         mime="image/png",
@@ -720,7 +740,7 @@ elif selected == "📊 EDA":
                     img_buffer = io.BytesIO()
                     fig_returns.write_image(img_buffer, format="png")
                     st.download_button(
-                        label="Télécharger l'analyse des rendements",
+                        label="📥 Télécharger l'analyse des rendements",
                         data=img_buffer,
                         file_name=f"returns_analysis_{entreprise}.png",
                         mime="image/png",
@@ -734,13 +754,13 @@ elif selected == "📊 EDA":
                     img_buffer = io.BytesIO()
                     fig_corr.write_image(img_buffer, format="png")
                     st.download_button(
-                        label="Télécharger la matrice de corrélation",
+                        label="📥 Télécharger la matrice de corrélation",
                         data=img_buffer,
                         file_name=f"correlation_matrix_{entreprise}.png",
                         mime="image/png",
                         use_container_width=True
                     )
-                    with st.expander("Matrice de corrélation"):
+                    with st.expander("📊 Matrice de corrélation"):
                         st.dataframe(corr_matrix, use_container_width=True)
                 
                 # Volatility
@@ -750,37 +770,38 @@ elif selected == "📊 EDA":
                     img_buffer = io.BytesIO()
                     fig_volatility.write_image(img_buffer, format="png")
                     st.download_button(
-                        label="Télécharger l'analyse de volatilité",
+                        label="📥 Télécharger l'analyse de volatilité",
                         data=img_buffer,
                         file_name=f"volatility_{entreprise}.png",
                         mime="image/png",
                         use_container_width=True
                     )
+                st.success("✅ Analyse terminée !", icon="✅")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-elif selected == "🔮 Predictions":
-    st.markdown("<h2 style='color: var(--accent);'>Future Predictions</h2>", unsafe_allow_html=True)
+elif page == "🔮 Predictions":
+    st.markdown("<h1 style='color: var(--primary);'>🔮 Prédictions Futures</h1>", unsafe_allow_html=True)
     
     with st.form("prediction_form"):
         st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
-        col1, col2 = st.columns([2, 1])
+        col1, col2 = st.columns([3, 1], gap="medium")
         with col1:
-            entreprise = st.text_input("Symbole boursier", value="TSLA")
+            entreprise = st.text_input("Symbole boursier", value="TSLA", placeholder="Ex: TSLA")
         with col2:
             pred_weeks = st.slider("Durée de prédiction (semaines)", 1, 12, 3)
         
         model_types = list(MODEL_PARAMS.keys())
         if not model_types:
-            st.warning("Aucun modèle disponible. Vérifiez les paramètres définis.")
+            st.error("❌ Aucun modèle disponible. Vérifiez les paramètres définis.", icon="❌")
             st.stop()
         
         selected_model = st.selectbox("Sélectionner le modèle", model_types)
-        submit_pred = st.form_submit_button("Prédire", use_container_width=True)
+        submit_pred = st.form_submit_button("✨ Prédire", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Display model parameters
-    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-    st.markdown("<h3>Paramètres des Modèles</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
+    st.markdown("<h4>Paramètres du Modèle</h4>", unsafe_allow_html=True)
     st.markdown(f"**Modèle sélectionné : {selected_model}**")
     params = MODEL_PARAMS[selected_model]
     st.markdown(f"""
@@ -790,11 +811,11 @@ elif selected == "🔮 Predictions":
     - **Dropout** : {params['dropout']}
     - **Taux d'apprentissage** : {params['lr']}
     """)
-    st.info("Les modèles sont pré-entraînés avec ces hyperparamètres fixes. Les métriques de performance ne sont pas disponibles dans cette version.")
+    st.info("ℹ️ Les modèles sont pré-entraînés avec ces hyperparamètres fixes. Les métriques de performance ne sont pas disponibles dans cette version.", icon="ℹ️")
     st.markdown("</div>", unsafe_allow_html=True)
     
     if submit_pred:
-        with st.spinner("Chargement du modèle et génération des prédictions..."):
+        with st.spinner("🔮 Chargement du modèle et génération des prédictions..."):
             # Download and preprocess data
             data_loader = DataLoader(entreprise, datetime.now() - timedelta(days=2*365), datetime.now())
             raw_data = data_loader.download_data()
@@ -810,6 +831,7 @@ elif selected == "🔮 Predictions":
                 st.stop()
             
             # Generate predictions
+            start_time = time.time()
             seq_length = params['seq_length']
             future_steps = pred_weeks * 7
             last_seq = processed_data.iloc[-seq_length:].values
@@ -828,9 +850,11 @@ elif selected == "🔮 Predictions":
             future_preds_inv = data_loader.scaler.inverse_transform(
                 np.concatenate([np.zeros((len(future_preds), processed_data.shape[1]-1)), np.array(future_preds).reshape(-1,1)], axis=1)
             )[:,-1]
+            end_time = time.time()
             
             # Plot predictions
-            st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+            st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
+            st.markdown(f"<h4>Résultat ({end_time-start_time:.2f}s)</h4>", unsafe_allow_html=True)
             fig_full = go.Figure()
             price_col = 'Close' if 'Close' in processed_data.columns else processed_data.columns[0]
             fig_full.add_trace(go.Scatter(x=processed_data.index, y=processed_data[price_col], name='Historique'))
@@ -847,7 +871,7 @@ elif selected == "🔮 Predictions":
             img_buffer = io.BytesIO()
             fig_full.write_image(img_buffer, format="png")
             st.download_button(
-                label="Télécharger la projection future",
+                label="📥 Télécharger la projection future",
                 data=img_buffer,
                 file_name=f"future_projection_{selected_model}_{entreprise}.png",
                 mime="image/png",
@@ -858,28 +882,25 @@ elif selected == "🔮 Predictions":
             csv_buffer = io.StringIO()
             pred_df.to_csv(csv_buffer)
             st.download_button(
-                label="Télécharger les prédictions",
+                label="📥 Télécharger les prédictions",
                 data=csv_buffer.getvalue(),
                 file_name=f"predictions_{entreprise}_future_{selected_model}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
+            st.success(f"✅ Prédictions générées en {end_time-start_time:.2f}s !", icon="✅")
             st.markdown("</div>", unsafe_allow_html=True)
 
-elif selected == "ℹ️ À propos":
-    st.markdown("""
-    <div class='section-card'>
-        <h1 class='section-title'>À propos</h1>
-        <p style='color:#e0f0ff;'>Découvrez le créateur, le projet et les technologies utilisées</p>
-    </div>
-    """, unsafe_allow_html=True)
+elif page == "ℹ️ À propos":
+    st.markdown("<h1 style='color: var(--primary);'>🌟 À propos</h1>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns(2, gap="large")
+    
     with col1:
         if about_animation:
             st_lottie(about_animation, height=250, key="about_animation")
         else:
-            st.warning("Animation À propos non chargée.")
+            st.warning("⚠️ Animation À propos non chargée.", icon="⚠️")
         st.image(
             "https://avatars.githubusercontent.com/u/TheBeyonder237",
             width=180,
@@ -893,37 +914,39 @@ elif selected == "ℹ️ À propos":
             <button class='about-contact-btn' onclick="window.open('https://github.com/TheBeyonder237')">🌐 GitHub</button>
         </div>
         """, unsafe_allow_html=True)
+    
     with col2:
         st.markdown("""
-        <div class='section-card'>
-            <h2 class='section-title'>Qui suis-je ?</h2>
+        <div class='custom-container'>
+            <h4>À propos du créateur</h4>
             <p style='color:#e0f0ff;'>
-                Je suis un passionné de l'intelligence artificielle et de la donnée.<br>
-                Actuellement en Master 2 en IA et Big Data, je travaille sur des solutions innovantes dans le domaine de l'Intelligence Artificielle appliquée à la finance et à la santé.
+                Je suis Ngôue David, étudiant en Master 2 en IA et Big Data. Passionné par l'intelligence artificielle appliquée à la finance et à la santé, je développe des solutions innovantes pour analyser et prédire les tendances.
             </p>
-            <h3 style='color:#7dd3fc;'>Compétences</h3>
+            <h4 style='color:#7dd3fc;'>Compétences</h4>
             <span class='badge'>Python</span>
             <span class='badge'>Machine Learning</span>
             <span class='badge'>Deep Learning</span>
-            <span class='badge'>NLP</span>
             <span class='badge'>Data Science</span>
-            <span class='badge'>Cloud Computing</span>
             <span class='badge'>Streamlit</span>
-            <span class='badge'>Scikit-learn</span>
-            <span class='badge'>XGBoost</span>
-            <span class='badge'>Pandas</span>
             <span class='badge'>Plotly</span>
-            <span class='badge'>SQL</span>
-            <h3 style='color:#7dd3fc; margin-top:1.5em;'>Projets récents</h3>
+            <h4 style='color:#7dd3fc; margin-top:1.5em;'>Projets récents</h4>
             <ul style='color:#e0f0ff;'>
-                <li><b>💳 Credit Card Expenditure Predictor</b> : Application de prédiction de dépenses de carte de crédit.</li>
-                <li><b>🫀 HeartGuard AI</b> : Prédiction de risques cardiaques par IA.</li>
-                <li><b>🔍 Multi-IA</b> : Plateforme multi-modèles pour la génération de texte, synthèse vocale, traduction et chatbot.</li>
+                <li><b>💳 Credit Card Expenditure Predictor</b> : Prédiction des dépenses.</li>
+                <li><b>🫀 HeartGuard AI</b> : Analyse des risques cardiaques.</li>
+                <li><b>🔍 Multi-IA</b> : Plateforme multi-modèles IA.</li>
+            </ul>
+            <h4 style='color:#7dd3fc;'>Stack Technique</h4>
+            <ul style='color:#e0f0ff;'>
+                <li><strong>yfinance</strong>: Données boursières</li>
+                <li><strong>PyTorch</strong>: Modèles RNN</li>
+                <li><strong>Streamlit</strong>: Interface utilisateur</li>
+                <li><strong>Plotly</strong>: Visualisations</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
+    
     st.markdown("""
     <div style='text-align: center; color: #e0f0ff; padding: 20px;'>
-        Développé avec ❤️ par Ngôue David
+        Développé avec ❤️ par Ngoué David
     </div>
     """, unsafe_allow_html=True)
