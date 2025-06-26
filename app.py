@@ -313,22 +313,22 @@ class FinancialDataEDA:
             })
         price_column = self.get_price_column()
         price_stats = [
-            self.data[price_column].mean(),
-            self.data[price_column].std(),
-            self.data[price_column].min(),
-            self.data[price_column].max(),
-            self.data[price_column].median(),
-            stats.skew(self.data[price_column], nan_policy='omit'),
-            stats.kurtosis(self.data[price_column], nan_policy='omit')
+            float(self.data[price_column].mean()),
+            float(self.data[price_column].std()),
+            float(self.data[price_column].min()),
+            float(self.data[price_column].max()),
+            float(self.data[price_column].median()),
+            float(stats.skew(self.data[price_column], nan_policy='omit')),
+            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))
         ]
         returns_stats = [
-            self.returns.mean() if self.returns is not None and not self.returns.empty else np.nan,
-            self.returns.std() if self.returns is not None and not self.returns.empty else np.nan,
-            self.returns.min() if self.returns is not None and not self.returns.empty else np.nan,
-            self.returns.max() if self.returns is not None and not self.returns.empty else np.nan,
-            self.returns.median() if self.returns is not None and not self.returns.empty else np.nan,
-            stats.skew(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan,
-            stats.kurtosis(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan
+            float(self.returns.mean()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.std()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.min()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.max()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.median()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(stats.skew(self.returns, nan_policy='omit')) if self.returns is not None and not self.returns.empty else np.nan,
+            float(stats.kurtosis(self.returns, nan_policy='omit')) if self.returns is not None and not self.returns.empty else np.nan
         ]
         return pd.DataFrame({
             'Statistique': ['Mean', 'Std Dev', 'Min', 'Max', 'Median', 'Skewness', 'Kurtosis'],
