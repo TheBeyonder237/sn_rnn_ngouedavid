@@ -440,19 +440,13 @@ class FinancialDataEDA:
         return report
 
     def get_display_data(self):
-        """Renomme les colonnes pour supprimer les références au ticker dans l'affichage."""
+        """Affiche les données sans référence explicite au ticker dans l'index."""
         if self.data is None or self.data.empty:
             return None
         display_data = self.data.copy()
-        column_mapping = {
-            'Open': 'Ouverture',
-            'High': 'Plus Haut',
-            'Low': 'Plus Bas',
-            'Close': 'Clôture',
-            'Volume': 'Volume',
-            'Adj Close': 'Prix Ajusté'
-        }
-        display_data = display_data.rename(columns=column_mapping)
+        # Supprime le ticker de l'index si présent
+        if isinstance(display_data.index, pd.MultiIndex) and display_data.index.names[0] == self.ticker:
+            display_data = display_data.reset_index(drop=True)
         return display_data
 
 # Model loading function
