@@ -17,9 +17,12 @@ from streamlit_option_menu import option_menu
 import uuid
 import scipy.stats as stats
 
-# Configure logging
+# Configure logging to suppress ticker-specific messages
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.handlers = []  # Clear default handlers
+logger.addHandler(logging.StreamHandler())  # Add custom handler
+logger.propagate = False  # Prevent propagation to root logger
 
 # Lottie animation loader
 def load_lottieurl(url):
@@ -174,7 +177,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Model hyperparameters (adjusted to match saved models)
+# Model hyperparameters
 MODEL_PARAMS = {
     'LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
     'GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 3, 'dropout': 0.2, 'lr': 0.001},
@@ -183,17 +186,19 @@ MODEL_PARAMS = {
     'CNN-LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
 }
 
-# Cached data download function
-@st.cache_data
+# Cached data download function (quiet mode)
+@st.cache_data(show_spinner=False)
 def download_data(_self, ticker, start_date, end_date):
     try:
-        data = yf.download(ticker, start=start_date, end=end_date, auto_adjust=False)
+        # Suppress yfinance progress bar
+        yf.pdr_override()
+        data = yf.download(ticker, start=start_date, end=end_date, auto_adjust=False, progress=False)
         if data.empty:
-            raise ValueError(f"No data found for {ticker}")
-        logger.info(f"Data downloaded for {ticker}")
+            raise ValueError(f"No data found for ticker")
+        logger.info("Data downloaded successfully")
         return data
     except Exception as e:
-        logger.error(f"Error downloading data for {ticker}: {e}")
+        logger.error(f"Error downloading data: {e}")
         st.error(f"❌ Failed to download data: {e}", icon="❌")
         return None
 
@@ -286,11 +291,11 @@ class FinancialDataEDA:
 
     def download_data(self):
         try:
-            self.data = yf.download(self.ticker, start=self.start_date, end=self.end_date, auto_adjust=False)
+            self.data = download_data(self, self.ticker, self.start_date, self.end_date)
             if self.data.empty:
-                raise ValueError(f"No data found for {self.ticker}")
+                raise ValueError(f"No data found for ticker")
             self.data = self.data.ffill()
-            logger.info(f"EDA data downloaded for {self.ticker}")
+            logger.info("EDA data downloaded successfully")
             return True
         except Exception as e:
             logger.error(f"Error downloading EDA data: {e}")
@@ -347,7 +352,7 @@ class FinancialDataEDA:
             name='OHLC'
         ))
         fig.update_layout(
-            title=f"Price Evolution - {self.ticker}",
+            title="Price Evolution",
             yaxis_title="Price ($)",
             xaxis_title="Date",
             template="plotly_white",
@@ -359,7 +364,7 @@ class FinancialDataEDA:
         fig = go.Figure()
         fig.add_trace(go.Bar(x=self.data.index, y=self.data['Volume'], name='Volume'))
         fig.update_layout(
-            title=f"Trading Volume - {self.ticker}",
+            title="Trading Volume",
             yaxis_title="Volume",
             xaxis_title="Date",
             template="plotly_white",
@@ -381,13 +386,13 @@ class FinancialDataEDA:
         fig.add_trace(go.Scatter(x=[min(theoretical_quantiles.min(), returns_sorted.min()), max(theoretical_quantiles.max(), returns_sorted.max())],
                                 y=[min(theoretical_quantiles.min(), returns_sorted.min()), max(theoretical_quantiles.max(), returns_sorted.max())],
                                 mode='lines', name='Reference Line', line=dict(color='red', dash='dash')), row=2, col=1)
-        fig.update_layout(title=f"Returns Analysis - {self.ticker}", template='plotly_white', height=600)
+        fig.update_layout(title="Returns Analysis", template='plotly_white', height=600)
         return fig
 
     def correlation_analysis(self):
         corr_matrix = self.data.corr()
         fig = go.Figure(data=go.Heatmap(z=corr_matrix, x=corr_matrix.columns, y=corr_matrix.columns, colorscale='RdBu'))
-        fig.update_layout(title=f"Correlation Matrix - {self.ticker}", template='plotly_white')
+        fig.update_layout(title="Correlation Matrix", template='plotly_white')
         return fig, corr_matrix
 
     def volatility_analysis(self):
@@ -396,7 +401,7 @@ class FinancialDataEDA:
         volatility = self.returns.rolling(window=20).std() * np.sqrt(252)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=volatility.index, y=volatility, name='Annualized Volatility'))
-        fig.update_layout(title=f"Volatility (20-day) - {self.ticker}", yaxis_title="Volatility", xaxis_title="Date", template='plotly_white')
+        fig.update_layout(title="Volatility (20-day)", yaxis_title="Volatility", xaxis_title="Date", template='plotly_white')
         return fig
 
     def generate_report(self):
@@ -410,10 +415,9 @@ class FinancialDataEDA:
             rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
-        # Convert columns to strings, handling potential tuples or MultiIndex
         columns_str = [str(col) for col in self.data.columns]
         report = (
-            f"# Financial Data Report - {self.ticker}\n\n"
+            f"# Financial Data Report\n\n"
             f"## Analysis Period\n"
             f"- Start Date: {self.start_date.strftime('%Y-%m-%d')}\n"
             f"- End Date: {self.end_date.strftime('%Y-%m-%d')}\n\n"
@@ -635,16 +639,19 @@ def main():
                         fig = plot_func()
                         if fig:
                             st.plotly_chart(fig, use_container_width=True)
-                            img_buffer = io.BytesIO()
-                            fig.write_image(img_buffer, format="png")
-                            st.download_button(
-                                label=f"Download {title}",
-                                data=img_buffer,
-                                file_name=f"{filename}_{ticker}.png",
-                                mime="image/png",
-                                use_container_width=True,
-                                key=f"download_{filename}_{uuid.uuid4()}"
-                            )
+                            try:
+                                img_buffer = io.BytesIO()
+                                fig.write_image(img_buffer, format="png")
+                                st.download_button(
+                                    label=f"Download {title}",
+                                    data=img_buffer,
+                                    file_name=f"{filename}_{ticker}.png",
+                                    mime="image/png",
+                                    use_container_width=True,
+                                    key=f"download_{filename}_{uuid.uuid4()}"
+                                )
+                            except Exception as e:
+                                st.warning(f"⚠️ Image export failed: {e}. Install 'kaleido' for PNG export.", icon="⚠️")
                     st.success("✅ Analysis completed!", icon="✅")
                     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -724,25 +731,28 @@ def main():
                 price_col = 'Adj Close'
                 fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data[price_col], name='Historical'))
                 fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Predicted', line=dict(color='#bae6fd')))
-                fig.update_layout(title=f"Price Prediction - {ticker}", xaxis_title="Date", yaxis_title="Price ($)", template='plotly_white')
+                fig.update_layout(title=f"Price Prediction", xaxis_title="Date", yaxis_title="Price ($)", template='plotly_white')
                 st.plotly_chart(fig, use_container_width=True)
-                img_buffer = io.BytesIO()
-                fig.write_image(img_buffer, format="png")
-                st.download_button(
-                    label="Download Prediction Plot",
-                    data=img_buffer,
-                    file_name=f"prediction_{ticker}_{model}.png",
-                    mime="image/png",
-                    use_container_width=True,
-                    key=f"download_pred_plot_{uuid.uuid4()}"
-                )
+                try:
+                    img_buffer = io.BytesIO()
+                    fig.write_image(img_buffer, format="png")
+                    st.download_button(
+                        label="Download Prediction Plot",
+                        data=img_buffer,
+                        file_name=f"prediction_{ticker}.png",
+                        mime="image/png",
+                        use_container_width=True,
+                        key=f"download_pred_plot_{uuid.uuid4()}"
+                    )
+                except Exception as e:
+                    st.warning(f"⚠️ Image export failed: {e}. Install 'kaleido' for PNG export.", icon="⚠️")
                 pred_df = pd.DataFrame(future_preds_inv, index=future_dates, columns=['Predicted Price'])
                 csv_buffer = io.StringIO()
                 pred_df.to_csv(csv_buffer)
                 st.download_button(
                     label="Download Predictions",
                     data=csv_buffer.getvalue(),
-                    file_name=f"predictions_{ticker}_{model}.csv",
+                    file_name=f"predictions_{ticker}.csv",
                     mime="text/csv",
                     use_container_width=True,
                     key=f"download_pred_csv_{uuid.uuid4()}"

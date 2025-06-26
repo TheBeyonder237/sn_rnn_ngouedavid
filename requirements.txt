@@ -11,3 +11,4 @@ scikit-learn
 requests
 streamlit-lottie
 streamlit-option-menu
+kaleido
