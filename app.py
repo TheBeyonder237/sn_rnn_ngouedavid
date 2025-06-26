@@ -177,7 +177,7 @@ st.markdown("""
 # Model hyperparameters (adjusted to match saved models)
 MODEL_PARAMS = {
     'LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
-    'GRU': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 3, 'dropout': 0.2, 'lr': 0.001},
+    'GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 3, 'dropout': 0.2, 'lr': 0.001},
     'Bidirectional LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
     'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
     'CNN-LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
@@ -410,6 +410,8 @@ class FinancialDataEDA:
             rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
+        # Convert columns to strings, handling potential tuples or MultiIndex
+        columns_str = [str(col) for col in self.data.columns]
         report = (
             f"# Financial Data Report - {self.ticker}\n\n"
             f"## Analysis Period\n"
@@ -420,7 +422,7 @@ class FinancialDataEDA:
             f"- Total Trading Days: {len(self.data)}\n"
             f"- Missing Values: {self.data.isnull().sum().sum()}\n"
             f"- Price Range: ${float(self.data[price_column].min().iloc[0]):.2f} - ${float(self.data[price_column].max().iloc[0]):.2f}\n"
-            f"- Available Columns: {', '.join(self.data.columns)}\n"
+            f"- Available Columns: {', '.join(columns_str)}\n"
         )
         return report
 
@@ -444,11 +446,11 @@ def load_model(model_name, input_size, params):
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         logger.info(f"Loaded model {model_name}")
-        return model
+        return model, device
     except Exception as e:
         logger.error(f"Error loading model {model_name}: {e}")
         st.error(f"❌ Failed to load model {model_name}: {e}", icon="❌")
-        return None
+        return None, None
 
 # Data Processing Badge
 def display_data_processing_badge():
@@ -693,7 +695,7 @@ def main():
                 if raw_data is None:
                     return
                 processed_data = data_loader.preprocess_data(raw_data)
-                model_instance = load_model(model, processed_data.shape[1], params)
+                model_instance, device = load_model(model, processed_data.shape[1], params)
                 if model_instance is None:
                     return
 
@@ -706,7 +708,7 @@ def main():
                 model_instance.eval()
                 with torch.no_grad():
                     for _ in range(future_steps):
-                        input_seq = torch.FloatTensor(current_seq).unsqueeze(0).to(model_instance.device)
+                        input_seq = torch.FloatTensor(current_seq).unsqueeze(0).to(device)
                         next_pred = model_instance(input_seq).cpu().numpy().squeeze()
                         future_preds.append(next_pred)
                         current_seq = np.vstack([current_seq[1:], np.append(current_seq[-1, :-1], next_pred)])
