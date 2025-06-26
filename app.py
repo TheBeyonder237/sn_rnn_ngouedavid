@@ -440,12 +440,14 @@ class FinancialDataEDA:
         return report
 
     def get_display_data(self):
-        """Affiche les données sans référence explicite au ticker dans l'index."""
+        """Affiche les données avec les titres originaux et supprime toute référence au ticker dans l'index."""
         if self.data is None or self.data.empty:
             return None
         display_data = self.data.copy()
-        # Supprime le ticker de l'index si présent
-        if isinstance(display_data.index, pd.MultiIndex) and display_data.index.names[0] == self.ticker:
+        # Vérifie et supprime le ticker de l'index si présent (MultiIndex ou autre)
+        if isinstance(display_data.index, pd.MultiIndex):
+            display_data = display_data.reset_index(drop=True)
+        elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
         return display_data
 
