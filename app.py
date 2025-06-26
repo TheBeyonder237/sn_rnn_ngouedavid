@@ -811,7 +811,7 @@ def main():
                     st.success("✅ Analyse terminée !", icon="✅")
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    elif selected == "Prédiction":
+    elif selected == "Prédictions":
         st.markdown("<h2 style='color:#bae6fd;'>Prédiction des Prix des Actions</h2>", unsafe_allow_html=True)
         with st.form(key="prediction_form"):
             ticker = st.text_input("Symbole du Ticker", value="TSLA")
