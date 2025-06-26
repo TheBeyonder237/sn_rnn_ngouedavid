@@ -329,25 +329,40 @@ class FinancialDataEDA:
                 'Prix': [np.nan] * 7,
                 'Rendements': [np.nan] * 7
             })
+        
         price_column = self.get_price_column()
+        
+        # Handle MultiIndex columns
+        if isinstance(self.data.columns, pd.MultiIndex):
+            # Check if 'Adj Close' or 'Close' exists in the first level of MultiIndex
+            available_columns = self.data.columns.get_level_values(0)
+            if 'Adj Close' in available_columns:
+                price_column = ('Adj Close', self.ticker)
+            elif 'Close' in available_columns:
+                price_column = ('Close', self.ticker)
+            else:
+                raise ValueError("Neither 'Adj Close' nor 'Close' found in data columns")
+        
         price_stats = [
-            float(self.data[price_column].mean().iloc[0]),
-            float(self.data[price_column].std().iloc[0]),
-            float(self.data[price_column].min().iloc[0]),
-            float(self.data[price_column].max().iloc[0]),
-            float(self.data[price_column].median().iloc[0]),
-            float(stats.skew(self.data[price_column], nan_policy='omit')[0]),
-            float(stats.kurtosis(self.data[price_column], nan_policy='omit')[0])
+            float(self.data[price_column].mean()),  # Remove .iloc[0]
+            float(self.data[price_column].std()),   # Remove .iloc[0]
+            float(self.data[price_column].min()),   # Remove .iloc[0]
+            float(self.data[price_column].max()),   # Remove .iloc[0]
+            float(self.data[price_column].median()),  # Remove .iloc[0]
+            float(stats.skew(self.data[price_column], nan_policy='omit')),  # Remove [0]
+            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))  # Remove [0]
         ]
+        
         returns_stats = [
-            float(self.returns.mean().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.std().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.min().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.max().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
-            float(self.returns.median().iloc[0]) if self.returns is not None and not self.returns.empty else np.nan,
-            float(stats.skew(self.returns, nan_policy='omit')[0]) if self.returns is not None and not self.returns.empty else np.nan,
-            float(stats.kurtosis(self.returns, nan_policy='omit')[0]) if self.returns is not None and not self.returns.empty else np.nan
+            float(self.returns.mean()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.std()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.min()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.max()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(self.returns.median()) if self.returns is not None and not self.returns.empty else np.nan,
+            float(stats.skew(self.returns, nan_policy='omit')) if self.returns is not None and not self.returns.empty else np.nan,
+            float(stats.kurtosis(self.returns, nan_policy='omit')) if self.returns is not None and not self.returns.empty else np.nan
         ]
+        
         return pd.DataFrame({
             'Statistique': ['Moyenne', 'Écart-type', 'Min', 'Max', 'Médiane', 'Asymétrie', 'Kurtosis'],
             'Prix': price_stats,
