@@ -446,41 +446,67 @@ class FinancialDataEDA:
             return None
         display_data = self.data.copy()
 
-        # --- Gestion des MultiIndex dans les colonnes (le problème TSLA) ---
+        # --- Gérer les MultiIndex dans les colonnes (le problème 'TSLA', 'TSLA', ...) ---
         if isinstance(display_data.columns, pd.MultiIndex):
-            # Si le premier niveau du MultiIndex des colonnes est le ticker, supprimez-le
-            # Cela suppose que le ticker est le seul élément du premier niveau
-            # et que les noms de colonnes réels sont dans le deuxième niveau.
-            display_data.columns = display_data.columns.get_level_values(1)
+            # Tente de conserver le niveau le plus bas des colonnes (Open, High, Low, Close, Volume, Adj Close)
+            # et supprime le niveau supérieur qui contient le ticker.
+            # get_level_values(1) suppose que les noms de colonnes sont au deuxième niveau (index 1)
+            # après le ticker qui est au premier niveau (index 0).
+            try:
+                display_data.columns = display_data.columns.get_level_values(1)
+            except IndexError:
+                # Si get_level_values(1) échoue (par exemple, s'il n'y a qu'un seul niveau),
+                # cela signifie que le ticker est le seul nom de colonne, ce qui est inattendu.
+                # Dans ce cas, nous devrons peut-être réinitialiser les noms de colonnes manuellement
+                # ou laisser tomber cette partie si cela ne s'applique pas au format yfinance habituel.
+                # Pour l'instant, log l'erreur et continue avec les colonnes existantes.
+                logger.warning("Le MultiIndex des colonnes n'a pas le niveau attendu 1. Les noms de colonnes pourraient rester inchangés.")
+                pass # Laisse les colonnes telles quelles si la conversion échoue
 
-        # --- Gestion des MultiIndex dans l'index des lignes (votre code existant) ---
+        # --- Gérer les MultiIndex dans l'index des lignes (votre code existant) ---
+        # Cette section devrait s'assurer que l'index est une date unique sans le ticker.
         if isinstance(display_data.index, pd.MultiIndex):
-            # Assurez-vous que le nom du niveau du ticker est correctement identifié pour le drop
-            # Le niveau 0 est généralement le ticker
-            # Le niveau 1 est généralement la date
-            if len(display_data.index.names) > 1: # S'il y a plus d'un niveau dans le MultiIndex
-                # Trouvez le niveau qui contient le ticker, s'il n'est pas le niveau 0 par défaut
-                # Par défaut, yfinance place le ticker en level 0
-                ticker_level_to_drop = 0 # Supposons que le ticker est au niveau 0
-
-                # Optionnel: si vous voulez être plus robuste et trouver le nom du ticker
-                # for i, name in enumerate(display_data.index.names):
-                #     if name == self.ticker:
-                #         ticker_level_to_drop = i
-                #         break
-
-                display_data = display_data.reset_index(level=ticker_level_to_drop, drop=True)
+            # Généralement, yfinance retourne (ticker, date) comme MultiIndex
+            # Nous voulons garder la date et supprimer le ticker.
+            # Le ticker est souvent au niveau 0 de l'index des lignes.
+            if len(display_data.index.names) > 1:
+                # Si le nom du premier niveau est le ticker, on le supprime.
+                # Sinon, on assume que le ticker est le premier niveau sans nom explicite.
+                if display_data.index.names[0] == self.ticker or display_data.index.names[0] is None:
+                    display_data = display_data.reset_index(level=0, drop=True)
+                else:
+                    # Si le niveau 0 n'est pas le ticker, cela pourrait être une autre structure.
+                    # Pour être sûr, réinitialisez l'index complet et réglez la colonne 'Date' comme index.
+                    display_data = display_data.reset_index()
+                    if 'Date' in display_data.columns:
+                        display_data = display_data.set_index('Date')
+                    # Supprimez la colonne du ticker si elle est apparue après reset_index
+                    if self.ticker in display_data.columns:
+                        display_data = display_data.drop(columns=[self.ticker])
             else:
-                # Si c'est un MultiIndex avec un seul niveau qui est le ticker
+                # S'il n'y a qu'un seul niveau dans le MultiIndex, et c'est le ticker lui-même,
+                # alors le DataFrame est mal formé pour l'affichage de données de prix.
+                # Il faut alors juste réinitialiser l'index.
                 display_data = display_data.reset_index(drop=True)
 
-        # Si ce n'est pas un MultiIndex, mais l'index a un nom qui est le ticker
+
+        # Si ce n'est pas un MultiIndex, mais l'index a un nom qui est le ticker.
+        # Cela gère le cas où l'index est un simple Index mais nommé avec le ticker.
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
             # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
-            if 'Date' in display_data.columns:
+            if 'Date' in display_data.columns: # Vérifie si 'Date' existe après reset_index
                 display_data = display_data.set_index('Date')
 
+        # Nettoyer les noms de colonnes pour les rendre uniques si des problèmes persistent
+        # Cela peut arriver si des colonnes comme 'Adj Close' et 'Close' sont dupliquées
+        # après une manipulation ou si la conversion du MultiIndex n'est pas parfaite.
+        cols = pd.Series(display_data.columns)
+        for dup in cols[cols.duplicated()].unique():
+            cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup
+                                                               for i in range(len(cols[cols == dup].index.values))]
+        display_data.columns = cols
+        
         return display_data
 
 # Model loading function
