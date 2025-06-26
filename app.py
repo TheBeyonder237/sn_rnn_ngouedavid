@@ -16,6 +16,7 @@ from streamlit_lottie import st_lottie
 from streamlit_option_menu import option_menu
 import uuid
 import scipy.stats as stats
+import matplotlib.pyplot as plt
 
 # Configure logging to suppress ticker-specific messages
 logging.basicConfig(level=logging.INFO)
@@ -662,9 +663,21 @@ def main():
                         fig = plot_func()
                         if fig:
                             st.plotly_chart(fig, use_container_width=True)
-                            try:
+                            # Exportation avec matplotlib
+                            plt.figure(figsize=(10, 6))
+                            fig_data = fig.to_dict()
+                            if 'data' in fig_data and len(fig_data['data']) > 0:
+                                for trace in fig_data['data']:
+                                    if 'x' in trace and 'y' in trace:
+                                        plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
+                                plt.title(title)
+                                plt.xlabel(fig_data['layout'].get('xaxis_title', ''))
+                                plt.ylabel(fig_data['layout'].get('yaxis_title', ''))
+                                plt.legend()
                                 img_buffer = io.BytesIO()
-                                fig.write_image(img_buffer, format="png")
+                                plt.savefig(img_buffer, format='png', bbox_inches='tight')
+                                plt.close()
+                                img_buffer.seek(0)
                                 st.download_button(
                                     label=f"Télécharger {title}",
                                     data=img_buffer,
@@ -673,8 +686,6 @@ def main():
                                     use_container_width=True,
                                     key=f"download_{filename}_{uuid.uuid4()}"
                                 )
-                            except Exception as e:
-                                st.warning(f"⚠️ Échec de l'exportation de l'image : {e}. Installez 'kaleido' pour l'export PNG.", icon="⚠️")
                     st.success("✅ Analyse terminée !", icon="✅")
                     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -756,9 +767,21 @@ def main():
                 fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Prédit', line=dict(color='#bae6fd')))
                 fig.update_layout(title="Prédiction des Prix", xaxis_title="Date", yaxis_title="Prix ($)", template='plotly_white')
                 st.plotly_chart(fig, use_container_width=True)
-                try:
+                # Exportation avec matplotlib
+                plt.figure(figsize=(10, 6))
+                fig_data = fig.to_dict()
+                if 'data' in fig_data and len(fig_data['data']) > 0:
+                    for trace in fig_data['data']:
+                        if 'x' in trace and 'y' in trace:
+                            plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
+                    plt.title("Prédiction des Prix")
+                    plt.xlabel("Date")
+                    plt.ylabel("Prix ($)")
+                    plt.legend()
                     img_buffer = io.BytesIO()
-                    fig.write_image(img_buffer, format="png")
+                    plt.savefig(img_buffer, format='png', bbox_inches='tight')
+                    plt.close()
+                    img_buffer.seek(0)
                     st.download_button(
                         label="Télécharger le Graphique de Prédiction",
                         data=img_buffer,
@@ -767,8 +790,6 @@ def main():
                         use_container_width=True,
                         key=f"download_pred_plot_{uuid.uuid4()}"
                     )
-                except Exception as e:
-                    st.warning(f"⚠️ Échec de l'exportation de l'image : {e}. Installez 'kaleido' pour l'export PNG.", icon="⚠️")
                 pred_df = pd.DataFrame(future_preds_inv, index=future_dates, columns=['Prix Prédit'])
                 csv_buffer = io.StringIO()
                 pred_df.to_csv(csv_buffer)
