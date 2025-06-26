@@ -15,6 +15,7 @@ import requests
 from streamlit_lottie import st_lottie
 from streamlit_option_menu import option_menu
 import uuid
+import scipy.stats as stats
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +43,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Modern CSS (inspired by Multi-IA)
+# Modern CSS with improved text visibility
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap');
@@ -55,8 +56,8 @@ st.markdown("""
         background: rgba(30, 41, 59, 0.95);
         border-radius: 24px;
         box-shadow: 0 8px 32px rgba(71, 85, 105, 0.2);
-        padding: 2rem;
-        margin-bottom: 1.5rem;
+        padding: 2.5rem;
+        margin-bottom: 2rem;
         transition: transform 0.3s, box-shadow 0.3s;
         backdrop-filter: blur(10px);
     }
@@ -65,28 +66,30 @@ st.markdown("""
         box-shadow: 0 12px 40px rgba(71, 85, 105, 0.3);
     }
     .section-title {
-        color: #7dd3fc;
-        font-size: 2.2em;
+        color: #bae6fd;
+        font-size: 2.4em;
         font-weight: 700;
-        margin-bottom: 0.5em;
+        margin-bottom: 0.6em;
         letter-spacing: 0.5px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     }
     .badge {
         background: linear-gradient(90deg, #475569, #64748b);
-        color: #e0f0ff;
+        color: #f8fafc;
         border-radius: 12px;
-        padding: 0.4em 1em;
-        font-size: 0.95em;
+        padding: 0.5em 1.2em;
+        font-size: 1.2em;
         font-weight: 600;
-        margin: 0.2em;
+        margin: 0.3em;
         display: inline-block;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
     .stButton>button {
         background: linear-gradient(90deg, #475569, #64748b);
-        color: #e0f0ff;
+        color: #f8fafc;
         border-radius: 24px;
-        padding: 0.8em 2em;
-        font-size: 1.1em;
+        padding: 0.9em 2.2em;
+        font-size: 1.2em;
         font-weight: 600;
         box-shadow: 0 4px 16px rgba(71, 85, 105, 0.2);
         transition: all 0.3s;
@@ -98,32 +101,35 @@ st.markdown("""
     }
     .stTextInput > div > div > input, .stSelectbox > div > div {
         background: #1e293b !important;
-        color: #e0f0ff !important;
+        color: #f8fafc !important;
         border: 2px solid #475569;
         border-radius: 12px;
-        padding: 0.7em;
+        padding: 0.8em;
+        font-size: 1.1em;
     }
     .stTextInput > div > div > input:focus, .stSelectbox > div > div:focus {
-        border-color: #7dd3fc;
+        border-color: #bae6fd;
         box-shadow: 0 0 0 3px rgba(71, 85, 105, 0.2);
     }
     .stSelectbox label {
-        color: #7dd3fc !important;
+        color: #bae6fd !important;
+        font-size: 1.1em;
     }
     .stSelectbox div[role="option"] {
         background: #334155 !important;
-        color: #e0f0ff !important;
+        color: #f8fafc !important;
+        font-size: 1.1em;
     }
     .sidebar .sidebar-content {
         background: linear-gradient(135deg, #334155, #475569);
         border-radius: 16px;
-        padding: 1rem;
+        padding: 1.5rem;
         box-shadow: 0 4px 20px rgba(71, 85, 105, 0.2);
     }
     .section-sep {
         border: none;
         border-top: 2px solid #64748b;
-        margin: 1.5em 0;
+        margin: 2em 0;
         width: 90%;
     }
     .card-fade {
@@ -141,13 +147,14 @@ st.markdown("""
     }
     .about-contact-btn {
         background: linear-gradient(90deg, #475569, #64748b);
-        color: #e0f0ff;
+        color: #f8fafc;
         border-radius: 16px;
-        padding: 0.5em 1.5em;
+        padding: 0.6em 1.6em;
         border: none;
         font-weight: 600;
         margin: 0.5em;
         transition: all 0.3s;
+        font-size: 1.1em;
     }
     .about-contact-btn:hover {
         background: linear-gradient(90deg, #64748b, #475569);
@@ -156,7 +163,13 @@ st.markdown("""
     .stAlert {
         border-radius: 12px;
         background: rgba(71, 85, 105, 0.3);
-        color: #e0f0ff;
+        color: #f8fafc;
+        font-size: 1.1em;
+    }
+    p, li, .stMarkdown {
+        color: #f8fafc !important;
+        font-size: 1.1em;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -178,9 +191,10 @@ class DataLoader:
         self.end_date = end_date
         self.scaler = MinMaxScaler()
 
+    @st.cache_data
     def download_data(self):
         try:
-            data = yf.download(self.ticker, start=self.start_date, end=self.end_date)
+            data = yf.download(self.ticker, start=self.start_date, end=self.end_date, auto_adjust=False)
             if data.empty:
                 raise ValueError(f"No data found for {self.ticker}")
             logger.info(f"Data downloaded for {self.ticker}")
@@ -191,16 +205,18 @@ class DataLoader:
             return None
 
     def preprocess_data(self, data):
-        data = data.fillna(method='ffill')
+        data = data.ffill()
         features = ['Open', 'High', 'Low', 'Close', 'Volume']
-        if 'Adj Close' in data.columns:
-            features.append('Adj Close')
+        # Ensure Adj Close is included, copy Close if unavailable
+        if 'Adj Close' not in data.columns:
+            data['Adj Close'] = data['Close']
+        features.append('Adj Close')
         data = data[features]
         return pd.DataFrame(self.scaler.fit_transform(data), columns=features, index=data.index)
 
     def create_sequences(self, data, seq_length):
         X, y = [], []
-        price_column = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
+        price_column = 'Adj Close'
         for i in range(len(data) - seq_length):
             X.append(data.iloc[i:i + seq_length].values)
             y.append(data.iloc[i + seq_length][price_column])
@@ -267,10 +283,10 @@ class FinancialDataEDA:
 
     def download_data(self):
         try:
-            self.data = yf.download(self.ticker, start=self.start_date, end=self.end_date)
+            self.data = yf.download(self.ticker, start=self.start_date, end=self.end_date, auto_adjust=False)
             if self.data.empty:
                 raise ValueError(f"No data found for {self.ticker}")
-            self.data = self.data.fillna(method='ffill')
+            self.data = self.data.ffill()
             logger.info(f"EDA data downloaded for {self.ticker}")
             return True
         except Exception as e:
@@ -286,26 +302,28 @@ class FinancialDataEDA:
         self.returns = self.data[price_column].pct_change().dropna()
 
     def basic_statistics(self):
+        if self.data is None or self.data.empty:
+            return pd.DataFrame(columns=['Statistique', 'Prix', 'Rendements'])
         price_column = self.get_price_column()
         stats_df = pd.DataFrame({
-            'Statistique': ['Moyenne', 'Écart-type', 'Minimum', 'Maximum', 'Médiane', 'Skewness', 'Kurtosis'],
+            'Statistique': ['Mean', 'Std Dev', 'Min', 'Max', 'Median', 'Skewness', 'Kurtosis'],
             'Prix': [
                 self.data[price_column].mean(),
                 self.data[price_column].std(),
                 self.data[price_column].min(),
                 self.data[price_column].max(),
                 self.data[price_column].median(),
-                stats.skew(self.data[price_column]),
-                stats.kurtosis(self.data[price_column])
+                stats.skew(self.data[price_column], nan_policy='omit'),
+                stats.kurtosis(self.data[price_column], nan_policy='omit')
             ],
             'Rendements': [
-                self.returns.mean() if self.returns is not None else np.nan,
-                self.returns.std() if self.returns is not None else np.nan,
-                self.returns.min() if self.returns is not None else np.nan,
-                self.returns.max() if self.returns is not None else np.nan,
-                self.returns.median() if self.returns is not None else np.nan,
-                stats.skew(self.returns) if self.returns is not None else np.nan,
-                stats.kurtosis(self.returns) if self.returns is not None else np.nan
+                self.returns.mean() if self.returns is not None and not self.returns.empty else np.nan,
+                self.returns.std() if self.returns is not None and not self.returns.empty else np.nan,
+                self.returns.min() if self.returns is not None and not self.returns.empty else np.nan,
+                self.returns.max() if self.returns is not None and not self.returns.empty else np.nan,
+                self.returns.median() if self.returns is not None and not self.returns.empty else np.nan,
+                stats.skew(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan,
+                stats.kurtosis(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan
             ]
         })
         return stats_df
@@ -380,7 +398,9 @@ class FinancialDataEDA:
         stats_df = self.basic_statistics()
         stats_md = "| Statistique | Prix | Rendements |\n|------------|------|------------|\n"
         for _, row in stats_df.iterrows():
-            stats_md += f"| {row['Statistique']} | {row['Prix']:.4f} | {row['Rendements']:.4f} |\n"
+            prix = '-' if pd.isna(row['Prix']) else f"{row['Prix']:.4f}"
+            rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
+            stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
         report = (
             f"# Financial Data Report - {self.ticker}\n\n"
@@ -400,6 +420,8 @@ class FinancialDataEDA:
 @st.cache_resource
 def load_model(model_name, input_size, params):
     try:
+        if input_size != 6:
+            raise ValueError(f"Expected 6 input features, got {input_size}. Ensure data includes 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'.")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if model_name.startswith('Bidirectional'):
             model_type = 'LSTM' if 'LSTM' in model_name else 'GRU'
@@ -408,7 +430,10 @@ def load_model(model_name, input_size, params):
             model = CNNLSTMModel(input_size, params['hidden_size'], params['num_layers']).to(device)
         else:
             model = RNNModel(input_size, params['hidden_size'], params['num_layers'], model_name, params['dropout']).to(device)
-        model.load_state_dict(torch.load(f"saved_models/best_model_{model_name}.pth", map_location=device))
+        model_path = f"saved_models/best_model_{model_name}.pth"
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file {model_path} not found")
+        model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         logger.info(f"Loaded model {model_name}")
         return model
@@ -426,28 +451,29 @@ def display_data_processing_badge():
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 0.5em;
-            margin-bottom: 1rem;
+            padding: 0.6em;
+            margin-bottom: 1.5rem;
             animation: fadeIn 1s ease;
         }
         .dp-dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #7dd3fc, #e0f0ff);
+            background: linear-gradient(135deg, #bae6fd, #f8fafc);
             margin-right: 8px;
-            box-shadow: 0 0 8px #7dd3fc;
+            box-shadow: 0 0 8px #bae6fd;
             animation: pulse 1.5s infinite;
         }
         .dp-text {
             font-weight: 600;
-            color: #e0f0ff;
-            font-size: 1em;
+            color: #f8fafc;
+            font-size: 1.1em;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
         @keyframes pulse {
-            0% { box-shadow: 0 0 8px #7dd3fc; }
-            50% { box-shadow: 0 0 16px #7dd3fc; }
-            100% { box-shadow: 0 0 8px #7dd3fc; }
+            0% { box-shadow: 0 0 8px #bae6fd; }
+            50% { box-shadow: 0 0 16px #bae6fd; }
+            100% { box-shadow: 0 0 8px #bae6fd; }
         }
         </style>
         <div class="dp-badge">
@@ -459,32 +485,35 @@ def display_data_processing_badge():
 
 # Sidebar
 with st.sidebar:
-    st_lottie(main_animation, height=100, key="sidebar_animation")
+    if main_animation:
+        st_lottie(main_animation, height=100, key="sidebar_animation")
+    else:
+        st.markdown("<p style='color:#f8fafc; text-align:center;'>Stock Analyzer</p>", unsafe_allow_html=True)
     selected = option_menu(
         menu_title="Navigation",
-        options=["Accueil", "EDA", "Predictions", "À propos"],
+        options=["Home", "EDA", "Predictions", "About"],
         icons=['house', 'graph-up', 'lightning-charge', 'info-circle'],
         menu_icon="cast",
         default_index=0,
         styles={
             "container": {"background": "linear-gradient(135deg, #334155, #475569)", "border-radius": "16px", "padding": "0.5rem"},
-            "icon": {"color": "#7dd3fc", "font-size": "20px"},
-            "nav-link": {"color": "#e0f0ff", "font-size": "16px", "padding": "10px", "border-radius": "12px"},
-            "nav-link-selected": {"background": "linear-gradient(90deg, #64748b, #475569)", "color": "#7dd3fc"},
+            "icon": {"color": "#bae6fd", "font-size": "20px"},
+            "nav-link": {"color": "#f8fafc", "font-size": "16px", "padding": "10px", "border-radius": "12px"},
+            "nav-link-selected": {"background": "linear-gradient(90deg, #64748b, #475569)", "color": "#bae6fd"},
         }
     )
     st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-    st.markdown("<div class='section-card'><h3 style='color:#7dd3fc; font-size:1.3em;'>Configuration</h3></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-card'><h3 style='color:#bae6fd; font-size:1.4em;'>Configuration</h3></div>", unsafe_allow_html=True)
     with st.form("config_form"):
         config_key = st.text_input("API Key (Optional)", type="password", placeholder="Enter optional API key")
         if st.form_submit_button("Validate", use_container_width=True):
             st.success("✅ Configuration validated (simulated)", icon="✅")
     st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
     st.markdown("""
-    <div style='text-align: center; color: #e0f0ff; font-size: 0.85em;'>
+    <div style='text-align: center; color: #f8fafc; font-size: 0.9em;'>
         Developed by Ngôue David<br>
-        <a href='mailto:ngouedavidrogeryannick@gmail.com' style='color:#7dd3fc;'>📧 Email</a><br>
-        <a href='https://github.com/TheBeyonder237' style='color:#7dd3fc;'>🌐 GitHub</a>
+        <a href='mailto:ngouedavidrogeryannick@gmail.com' style='color:#bae6fd;'>📧 Email</a><br>
+        <a href='https://github.com/TheBeyonder237' style='color:#bae6fd;'>🌐 GitHub</a>
     </div>
     """, unsafe_allow_html=True)
 
@@ -492,24 +521,24 @@ with st.sidebar:
 def main():
     display_data_processing_badge()
     
-    if selected == "Accueil":
+    if selected == "Home":
         st.markdown("""
         <div class='section-card card-fade' style='text-align: center; max-width: 1000px; margin: auto;'>
             <h1 class='section-title'>📈 Stock Analyzer</h1>
-            <p style='color: #e0f0ff; font-size: 1.2em; margin-bottom: 1em;'>Advanced Financial Analysis Powered by AI</p>
+            <p style='color: #f8fafc; font-size: 1.3em; margin-bottom: 1em;'>Advanced Financial Analysis Powered by AI</p>
             <hr class='section-sep'/>
-            <p style='color: #e0f0ff; font-size: 1em;'>Explore stock data and predict future trends with cutting-edge RNN models.</p>
+            <p style='color: #f8fafc; font-size: 1.1em;'>Explore stock data and predict future trends with cutting-edge RNN models.</p>
         </div>
         """, unsafe_allow_html=True)
         col1, col2 = st.columns([1.5, 1])
         with col1:
             st.markdown("""
             <div class='section-card card-fade'>
-                <h3 style='color:#7dd3fc; font-size:1.4em;'>Mission</h3>
-                <p style='color:#e0f0ff;'>Deliver actionable insights and accurate predictions for financial markets using deep learning.</p>
+                <h3 style='color:#bae6fd; font-size:1.5em;'>Mission</h3>
+                <p style='color:#f8fafc;'>Deliver actionable insights and accurate predictions for financial markets using deep learning.</p>
             </div>
             <div class='section-card card-fade'>
-                <h3 style='color:#7dd3fc; font-size:1.4em;'>Technologies</h3>
+                <h3 style='color:#bae6fd; font-size:1.5em;'>Technologies</h3>
                 <span class='badge'>yfinance</span>
                 <span class='badge'>PyTorch</span>
                 <span class='badge'>Plotly</span>
@@ -517,11 +546,14 @@ def main():
             </div>
             """, unsafe_allow_html=True)
         with col2:
-            st_lottie(main_animation, height=200, key="home_animation")
+            if main_animation:
+                st_lottie(main_animation, height=200, key="home_animation")
+            else:
+                st.markdown("<p style='color:#f8fafc; text-align:center;'>Welcome to Stock Analyzer</p>", unsafe_allow_html=True)
             st.markdown("""
             <div class='metric-card card-fade' style='text-align: center;'>
-                <h3 style='color:#7dd3fc; margin:0;'>100+</h3>
-                <p style='color:#e0f0ff; margin:0;'>Analyzable Assets</p>
+                <h3 style='color:#bae6fd; margin:0;'>100+</h3>
+                <p style='color:#f8fafc; margin:0;'>Analyzable Assets</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -532,7 +564,7 @@ def main():
             <span class='badge'>yfinance</span>
             <span class='badge'>Plotly</span>
             <hr class='section-sep'/>
-            <p style='color:#e0f0ff;'>Analyze historical stock data with comprehensive visualizations and statistics.</p>
+            <p style='color:#f8fafc;'>Analyze historical stock data with comprehensive visualizations and statistics.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -555,13 +587,19 @@ def main():
             submit = st.form_submit_button("Analyze", use_container_width=True)
 
         if submit:
+            if not ticker.strip():
+                st.error("❌ Please enter a valid ticker symbol.", icon="❌")
+                return
             with st.spinner("Processing data..."):
-                st_lottie(loading_animation, height=80, key=f"eda_loading_{uuid.uuid4()}")
+                if loading_animation:
+                    st_lottie(loading_animation, height=80, key=f"eda_loading_{uuid.uuid4()}")
+                else:
+                    st.markdown("<p style='color:#f8fafc; text-align:center;'>Loading...</p>", unsafe_allow_html=True)
                 eda = FinancialDataEDA(ticker, start_date, end_date)
                 report = eda.generate_report()
                 if report:
                     st.markdown("<div class='visual-card card-fade'>", unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:#7dd3fc;'>Analysis Report</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='color:#bae6fd;'>Analysis Report</h3>", unsafe_allow_html=True)
                     st.markdown(report, unsafe_allow_html=True)
                     st.download_button(
                         label="Download Report",
@@ -572,7 +610,7 @@ def main():
                         key=f"download_report_{uuid.uuid4()}"
                     )
                     st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:#7dd3fc;'>Data Preview</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='color:#bae6fd;'>Data Preview</h3>", unsafe_allow_html=True)
                     st.dataframe(eda.data.head(), use_container_width=True)
                     
                     for title, plot_func, filename in [
@@ -583,7 +621,7 @@ def main():
                         ("Volatility Analysis", eda.volatility_analysis, "volatility")
                     ]:
                         st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-                        st.markdown(f"<h3 style='color:#7dd3fc;'>{title}</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='color:#bae6fd;'>{title}</h3>", unsafe_allow_html=True)
                         fig = plot_func()
                         if fig:
                             st.plotly_chart(fig, use_container_width=True)
@@ -607,7 +645,7 @@ def main():
             <span class='badge'>RNN</span>
             <span class='badge'>PyTorch</span>
             <hr class='section-sep'/>
-            <p style='color:#e0f0ff;'>Predict future stock prices using advanced RNN models.</p>
+            <p style='color:#f8fafc;'>Predict future stock prices using advanced RNN models.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -621,7 +659,7 @@ def main():
             submit = st.form_submit_button("Predict", use_container_width=True)
 
         st.markdown("<div class='section-card card-fade'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color:#7dd3fc;'>Model Parameters</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#bae6fd;'>Model Parameters</h3>", unsafe_allow_html=True)
         params = MODEL_PARAMS[model]
         st.markdown(f"<span class='badge'>{model}</span>", unsafe_allow_html=True)
         st.markdown(f"""
@@ -634,8 +672,14 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
         if submit:
+            if not ticker.strip():
+                st.error("❌ Please enter a valid ticker symbol.", icon="❌")
+                return
             with st.spinner("Generating predictions..."):
-                st_lottie(loading_animation, height=80, key=f"pred_loading_{uuid.uuid4()}")
+                if loading_animation:
+                    st_lottie(loading_animation, height=80, key=f"pred_loading_{uuid.uuid4()}")
+                else:
+                    st.markdown("<p style='color:#f8fafc; text-align:center;'>Loading...</p>", unsafe_allow_html=True)
                 data_loader = DataLoader(ticker, datetime.now() - timedelta(days=2*365), datetime.now())
                 raw_data = data_loader.download_data()
                 if raw_data is None:
@@ -665,11 +709,11 @@ def main():
                 )[:,-1]
 
                 st.markdown("<div class='visual-card card-fade'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='color:#7dd3fc;'>Prediction Results</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='color:#bae6fd;'>Prediction Results</h3>", unsafe_allow_html=True)
                 fig = go.Figure()
-                price_col = 'Adj Close' if 'Adj Close' in processed_data.columns else 'Close'
+                price_col = 'Adj Close'
                 fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data[price_col], name='Historical'))
-                fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Predicted', line=dict(color='#7dd3fc')))
+                fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Predicted', line=dict(color='#bae6fd')))
                 fig.update_layout(title=f"Price Prediction - {ticker}", xaxis_title="Date", yaxis_title="Price ($)", template='plotly_white')
                 st.plotly_chart(fig, use_container_width=True)
                 img_buffer = io.BytesIO()
@@ -696,17 +740,20 @@ def main():
                 st.success("✅ Predictions generated successfully!", icon="✅")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-    elif selected == "À propos":
+    elif selected == "About":
         st.markdown("""
         <div class='section-card card-fade' style='max-width: 1000px; margin: auto;'>
             <h1 class='section-title'>🌟 About</h1>
-            <p style='color:#e0f0ff;'>Learn about the creator and technology behind Stock Analyzer</p>
+            <p style='color:#f8fafc;'>Learn about the creator and technology behind Stock Analyzer</p>
             <hr class='section-sep'/>
         </div>
         """, unsafe_allow_html=True)
         col1, col2 = st.columns([1, 2])
         with col1:
-            st_lottie(about_animation, height=200, key="about_animation")
+            if about_animation:
+                st_lottie(about_animation, height=200, key="about_animation")
+            else:
+                st.markdown("<p style='color:#f8fafc; text-align:center;'>About Stock Analyzer</p>", unsafe_allow_html=True)
             st.image("https://avatars.githubusercontent.com/u/TheBeyonder237", width=150, caption="Ngôue David")
             st.markdown("""
             <div style='text-align:center;'>
@@ -717,22 +764,22 @@ def main():
         with col2:
             st.markdown("""
             <div class='section-card card-fade'>
-                <h3 style='color:#7dd3fc;'>About the Creator</h3>
-                <p style='color:#e0f0ff;'>Ngôue David, a Master's student in AI and Big Data, specializes in applying machine learning to finance and healthcare.</p>
-                <h3 style='color:#7dd3fc;'>Skills</h3>
+                <h3 style='color:#bae6fd;'>About the Creator</h3>
+                <p style='color:#f8fafc;'>Ngôue David, a Master's student in AI and Big Data, specializes in applying machine learning to finance and healthcare.</p>
+                <h3 style='color:#bae6fd;'>Skills</h3>
                 <span class='badge'>Python</span>
                 <span class='badge'>Machine Learning</span>
                 <span class='badge'>Deep Learning</span>
                 <span class='badge'>Data Science</span>
-                <h3 style='color:#7dd3fc;'>Projects</h3>
-                <ul style='color:#e0f0ff;'>
+                <h3 style='color:#bae6fd;'>Projects</h3>
+                <ul style='color:#f8fafc;'>
                     <li>Credit Card Expenditure Predictor</li>
                     <li>HeartGuard AI: Cardiac Risk Prediction</li>
                     <li>Stock Analyzer: RNN-based Financial Forecasting</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
-        st.markdown("<div style='text-align: center; color: #e0f0ff; padding: 1em;'>Developed by Ngôue David</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; color: #f8fafc; padding: 1em;'>Developed by Ngôue David</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
