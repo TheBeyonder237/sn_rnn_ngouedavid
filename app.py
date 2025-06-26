@@ -305,6 +305,9 @@ class FinancialDataEDA:
             if self.data is None or self.data.empty:
                 raise ValueError(f"Aucune donnée trouvée pour le ticker")
             self.data = self.data.ffill()
+            # Aplatir le MultiIndex si nécessaire
+            if isinstance(self.data.columns, pd.MultiIndex):
+                self.data.columns = self.data.columns.get_level_values(0)  # Prendre le premier niveau
             logger.info("Données EDA téléchargées avec succès")
             return True
         except Exception as e:
@@ -425,7 +428,13 @@ class FinancialDataEDA:
             rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
-        columns_str = [str(col) for col in self.data.columns]
+        
+        # Modification ici : Extraire uniquement le premier niveau des colonnes
+        if isinstance(self.data.columns, pd.MultiIndex):
+            columns_str = [col[0] for col in self.data.columns]  # Prendre le premier niveau (nom de la colonne)
+        else:
+            columns_str = [str(col) for col in self.data.columns]
+            
         report = (
             f"# Rapport des Données Financières\n\n"
             f"## Période d'Analyse\n"
@@ -441,60 +450,23 @@ class FinancialDataEDA:
         return report
 
     def get_display_data(self):
-        """Affiche les données avec les titres originaux et supprime toute référence au ticker dans l'index ou les colonnes."""
+        """Affiche les données avec les titres originaux."""
         if self.data is None or self.data.empty:
             return None
         display_data = self.data.copy()
-
-        # --- Gérer les MultiIndex dans les colonnes ---
-        if isinstance(display_data.columns, pd.MultiIndex):
-            # Basé sur l'image fournie, la structure est probablement (Nom_Colonne, Ticker)
-            # Nous voulons conserver le 'Nom_Colonne' qui est au niveau 0.
-            display_data.columns = display_data.columns.get_level_values(0)
-            
-            # Après avoir aplati, assurez-vous que les noms de colonnes sont uniques.
-            # Cela gère les cas où get_level_values(0) pourrait encore entraîner des doublons
-            # ou si les noms de colonnes par défaut de yfinance ne sont pas uniques.
-            cols = pd.Series(display_data.columns)
-            if cols.duplicated().any():
-                # Pour tout nom de colonne dupliqué, ajoutez un suffixe pour le rendre unique
-                for dup in cols[cols.duplicated()].unique():
-                    # Trouvez tous les indices où ce nom dupliqué apparaît
-                    indices = cols[cols == dup].index.values.tolist()
-                    for i, idx in enumerate(indices):
-                        # N'ajoutez un suffixe qu'à partir de la deuxième occurrence
-                        if i > 0: 
-                            cols.iloc[idx] = f"{dup}_{i}"
-                display_data.columns = cols
-
-
-        # --- Gérer les MultiIndex dans l'index des lignes ---
-        # Cette section s'assure que l'index est une date unique sans le ticker.
+        
+        # Gérer l'index des lignes si nécessaire
         if isinstance(display_data.index, pd.MultiIndex):
-            # Si le MultiIndex a plus d'un niveau (par exemple, Symbole, Date)
             if len(display_data.index.names) > 1:
-                # Trouvez le niveau qui n'est pas 'Date' et supprimez-le.
-                # En supposant que le ticker est généralement le premier niveau (level=0)
                 level_to_drop = 0
-                # Si 'Date' est explicitement nommé dans les niveaux d'index, nous nous assurons de le conserver
-                # et de supprimer l'autre niveau.
                 if 'Date' in display_data.index.names:
-                    # Supprimez le niveau qui n'est pas 'Date'
                     for i, name in enumerate(display_data.index.names):
                         if name != 'Date':
                             level_to_drop = i
                             break
                 display_data = display_data.reset_index(level=level_to_drop, drop=True)
-            else:
-                # S'il n'y a qu'un seul niveau dans le MultiIndex et c'est le ticker lui-même
-                # ou un niveau unique sans nom, il suffit de le réinitialiser.
-                display_data = display_data.reset_index(drop=True)
-
-        # Si ce n'est pas un MultiIndex pour les lignes, mais l'index a un nom qui est le ticker.
-        # Cela gère les cas où l'index est un Index simple mais nommé avec le ticker.
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
-            # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
             if 'Date' in display_data.columns:
                 display_data = display_data.set_index('Date')
         
