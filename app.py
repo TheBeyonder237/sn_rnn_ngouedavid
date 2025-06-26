@@ -306,30 +306,35 @@ class FinancialDataEDA:
 
     def basic_statistics(self):
         if self.data is None or self.data.empty:
-            return pd.DataFrame(columns=['Statistique', 'Prix', 'Rendements'])
+            return pd.DataFrame({
+                'Statistique': ['Mean', 'Std Dev', 'Min', 'Max', 'Median', 'Skewness', 'Kurtosis'],
+                'Prix': [np.nan] * 7,
+                'Rendements': [np.nan] * 7
+            })
         price_column = self.get_price_column()
-        stats_df = pd.DataFrame({
+        price_stats = [
+            self.data[price_column].mean(),
+            self.data[price_column].std(),
+            self.data[price_column].min(),
+            self.data[price_column].max(),
+            self.data[price_column].median(),
+            stats.skew(self.data[price_column], nan_policy='omit'),
+            stats.kurtosis(self.data[price_column], nan_policy='omit')
+        ]
+        returns_stats = [
+            self.returns.mean() if self.returns is not None and not self.returns.empty else np.nan,
+            self.returns.std() if self.returns is not None and not self.returns.empty else np.nan,
+            self.returns.min() if self.returns is not None and not self.returns.empty else np.nan,
+            self.returns.max() if self.returns is not None and not self.returns.empty else np.nan,
+            self.returns.median() if self.returns is not None and not self.returns.empty else np.nan,
+            stats.skew(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan,
+            stats.kurtosis(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan
+        ]
+        return pd.DataFrame({
             'Statistique': ['Mean', 'Std Dev', 'Min', 'Max', 'Median', 'Skewness', 'Kurtosis'],
-            'Prix': [
-                self.data[price_column].mean(),
-                self.data[price_column].std(),
-                self.data[price_column].min(),
-                self.data[price_column].max(),
-                self.data[price_column].median(),
-                stats.skew(self.data[price_column], nan_policy='omit'),
-                stats.kurtosis(self.data[price_column], nan_policy='omit')
-            ],
-            'Rendements': [
-                self.returns.mean() if self.returns is not None and not self.returns.empty else np.nan,
-                self.returns.std() if self.returns is not None and not self.returns.empty else np.nan,
-                self.returns.min() if self.returns is not None and not self.returns.empty else np.nan,
-                self.returns.max() if self.returns is not None and not self.returns.empty else np.nan,
-                self.returns.median() if self.returns is not None and not self.returns.empty else np.nan,
-                stats.skew(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan,
-                stats.kurtosis(self.returns, nan_policy='omit') if self.returns is not None and not self.returns.empty else np.nan
-            ]
+            'Prix': price_stats,
+            'Rendements': returns_stats
         })
-        return stats_df
 
     def plot_price_evolution(self):
         fig = go.Figure()
@@ -401,8 +406,8 @@ class FinancialDataEDA:
         stats_df = self.basic_statistics()
         stats_md = "| Statistique | Prix | Rendements |\n|------------|------|------------|\n"
         for _, row in stats_df.iterrows():
-            prix = '-' if pd.isna(row['Prix'].iloc[0]) else f"{row['Prix'].iloc[0]:.4f}"
-            rendements = '-' if pd.isna(row['Rendements'].iloc[0]) else f"{row['Rendements'].iloc[0]:.4f}"
+            prix = '-' if pd.isna(row['Prix']) else f"{row['Prix']:.4f}"
+            rendements = '-' if pd.isna(row['Rendements']) else f"{row['Rendements']:.4f}"
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
         report = (
@@ -432,7 +437,7 @@ def load_model(model_name, input_size, params):
         elif model_name == 'CNN-LSTM':
             model = CNNLSTMModel(input_size, params['hidden_size'], params['num_layers']).to(device)
         else:
-            model = RNNModel(input_size, params['hidden_size'], params['num_layers'], model_name, params['dropout']).to(device)
+            model = RNNModel(input_size, params['hidden_size'], params['num_layers'], model_type=model_name, dropout=params['dropout']).to(device)
         model_path = f"saved_models/best_model_{model_name}.pth"
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file {model_path} not found. Ensure all model files are in the 'saved_models' directory.")
