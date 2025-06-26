@@ -811,120 +811,113 @@ def main():
                     st.success("✅ Analyse terminée !", icon="✅")
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    elif selected == "Prédictions":
-        st.markdown("""
-        <div class='section-card card-fade' style='max-width: 1000px; margin: auto;'>
-            <h1 class='section-title'>🔮 Prédictions Futures</h1>
-            <span class='badge'>RNN</span>
-            <span class='badge'>PyTorch</span>
-            <hr class='section-sep'/>
-            <p style='color:#f8fafc;'>Prédisez les prix futurs des stocks avec des modèles RNN avancés.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.form("pred_form"):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                ticker = st.text_input("Symbole de Ticker", value="TSLA", placeholder="ex. : TSLA")
-            with col2:
-                pred_weeks = st.slider("Horizon de Prédiction (Semaines)", 1, 12, 3)
-            model = st.selectbox("Sélectionner un Modèle", list(MODEL_PARAMS.keys()))
-            submit = st.form_submit_button("Prédire", use_container_width=True)
-
-        st.markdown("<div class='section-card card-fade'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color:#bae6fd;'>Paramètres du Modèle</h3>", unsafe_allow_html=True)
-        params = MODEL_PARAMS[model]
-        st.markdown(f"<span class='badge'>{model}</span>", unsafe_allow_html=True)
-        st.markdown(f"""
-        - Longueur de Séquence : {params['seq_length']}<br>
-        - Taille Cachée : {params['hidden_size']}<br>
-        - Couches : {params['num_layers']}<br>
-        - Dropout : {params['dropout']}<br>
-        - Taux d'Apprentissage : {params['lr']}
-        """, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    elif selected == "Prédiction":
+        st.markdown("<h2 style='color:#bae6fd;'>Prédiction des Prix des Actions</h2>", unsafe_allow_html=True)
+        with st.form(key="prediction_form"):
+            ticker = st.text_input("Symbole du Ticker", value="TSLA")
+            start_date = st.date_input("Date de Début", value=pd.to_datetime("2020-01-01"))
+            end_date = st.date_input("Date de Fin", value=pd.to_datetime("2023-12-31"))
+            future_steps = st.number_input("Nombre de Jours à Prédire", min_value=1, max_value=30, value=10, step=1)
+            model_type = st.selectbox("Type de Modèle", ["LSTM", "GRU", "LSTM Bidirectionnel", "GRU Bidirectionnel", "CNN-LSTM"])
+            submit = st.form_submit_button("Prédire")
 
         if submit:
             if not ticker.strip():
                 st.error("❌ Veuillez entrer un symbole de ticker valide.", icon="❌")
                 return
-            with st.spinner("Génération des prédictions..."):
+            with st.spinner("Traitement des données..."):
                 if loading_animation:
                     st_lottie(loading_animation, height=80, key=f"pred_loading_{uuid.uuid4()}")
                 else:
                     st.markdown("<p style='color:#f8fafc; text-align:center;'>Chargement...</p>", unsafe_allow_html=True)
-                data_loader = DataLoader(ticker, datetime.now() - timedelta(days=2*365), datetime.now())
-                raw_data = data_loader.download_data()
-                if raw_data is None:
+                predictor = StockPricePredictor(ticker, start_date, end_date)
+                try:
+                    model_instance = predictor.load_model(model_type)
+                    logger.info(f"Modèle {model_type} chargé")
+                except Exception as e:
+                    st.error(f"Erreur lors du chargement du modèle {model_type} : {e}", icon="❌")
+                    logger.error(f"Erreur lors du chargement du modèle {model_type} : {e}")
                     return
-                processed_data = data_loader.preprocess_data(raw_data)
-                model_instance, device = load_model(model, processed_data.shape[1], params)
-                if model_instance is None:
-                    return
-
-                seq_length = params['seq_length']
-                future_steps = pred_weeks * 7
-                last_seq = processed_data.iloc[-seq_length:].values
-                future_preds = []
-                current_seq = last_seq.copy()
-
-                model_instance.eval()
-                with torch.no_grad():
-                    for _ in range(future_steps):
-                        input_seq = torch.FloatTensor(current_seq).unsqueeze(0).to(device)
-                        next_pred = model_instance(input_seq).cpu().numpy().squeeze()
-                        future_preds.append(next_pred)
-                        current_seq = np.vstack([current_seq[1:], np.append(current_seq[-1, :-1], next_pred)])
-
-                future_dates = pd.date_range(processed_data.index[-1] + pd.Timedelta(days=1), periods=future_steps)
-                future_preds_inv = data_loader.scaler.inverse_transform(
-                    np.concatenate([np.zeros((len(future_preds), processed_data.shape[1]-1)), np.array(future_preds).reshape(-1,1)], axis=1)
-                )[:,-1]
-
-                st.markdown("<div class='visual-card card-fade'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='color:#bae6fd;'>Résultats des Prédictions</h3>", unsafe_allow_html=True)
-                fig = go.Figure()
-                price_col = 'Adj Close'
-                fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data[price_col], name='Historique'))
-                fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Prédit', line=dict(color='#bae6fd')))
-                fig.update_layout(title="Prédiction des Prix", xaxis_title="Date", yaxis_title="Prix ($)", template='plotly_white')
-                st.plotly_chart(fig, use_container_width=True)
-                # Exportation avec matplotlib
-                plt.figure(figsize=(10, 6))
-                fig_data = fig.to_dict()
-                if 'data' in fig_data and len(fig_data['data']) > 0:
-                    for trace in fig_data['data']:
-                        if 'x' in trace and 'y' in trace:
-                            plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
-                    plt.title("Prédiction des Prix")
-                    plt.xlabel("Date")
-                    plt.ylabel("Prix ($)")
-                    plt.legend()
-                    img_buffer = io.BytesIO()
-                    plt.savefig(img_buffer, format='png', bbox_inches='tight')
-                    plt.close()
-                    img_buffer.seek(0)
-                    st.download_button(
-                        label="Télécharger le Graphique de Prédiction",
-                        data=img_buffer,
-                        file_name=f"prediction_{ticker}.png",
-                        mime="image/png",
-                        use_container_width=True,
-                        key=f"download_pred_plot_{uuid.uuid4()}"
+                
+                try:
+                    predictions, future_dates = predictor.predict(model_instance, future_steps=future_steps)
+                    fig = go.Figure()
+                    price_column = ('Adj Close', ticker) if isinstance(predictor.data.columns, pd.MultiIndex) else 'Adj Close'
+                    # Historical data
+                    fig.add_trace(go.Scatter(
+                        x=predictor.data.index,
+                        y=predictor.data[price_column],
+                        mode='lines',
+                        name='Historique'
+                    ))
+                    # Predicted data
+                    fig.add_trace(go.Scatter(
+                        x=future_dates,
+                        y=predictions,
+                        mode='lines',
+                        name='Prédictions',
+                        line=dict(dash='dash')
+                    ))
+                    fig.update_layout(
+                        title=f"Prédictions des Prix pour {ticker} ({model_type})",
+                        xaxis_title="Date",
+                        yaxis_title="Prix ($)",
+                        template="plotly_white",
+                        margin=dict(l=20, r=20, t=50, b=20)
                     )
-                pred_df = pd.DataFrame(future_preds_inv, index=future_dates, columns=['Prix Prédit'])
-                csv_buffer = io.StringIO()
-                pred_df.to_csv(csv_buffer)
-                st.download_button(
-                    label="Télécharger les Prédictions",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"predictions_{ticker}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key=f"download_pred_csv_{uuid.uuid4()}"
-                )
-                st.success("✅ Prédictions générées avec succès !", icon="✅")
-                st.markdown("</div>", unsafe_allow_html=True)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Exportation avec matplotlib
+                    plt.figure(figsize=(10, 6))
+                    fig_data = fig.to_dict()
+                    has_valid_traces = False
+                    if 'data' in fig_data and len(fig_data['data']) > 0:
+                        for trace in fig_data['data']:
+                            trace_type = trace.get('type', '')
+                            trace_name = trace.get('name', '')
+                            logger.info(f"Processing prediction trace: type={trace_type}, name={trace_name}, keys={list(trace.keys())}")
+                            
+                            try:
+                                x_data = to_numeric_array(trace.get('x', []), 'x')
+                                y_data = to_numeric_array(trace.get('y', []), 'y')
+                                if x_data.size > 0 and y_data.size > 0:
+                                    plt.plot(x_data, y_data, label=trace_name or 'Trace', linestyle='--' if 'Prédictions' in trace_name else '-')
+                                    has_valid_traces = True
+                                else:
+                                    logger.warning(f"Données vides pour la trace {trace_type}: {trace_name}")
+                            except Exception as e:
+                                logger.error(f"Erreur lors du tracé de la courbe pour {model_type}: {e}, x_sample={trace.get('x', [])[:5]}, y_sample={trace.get('y', [])[:5]}")
+                                continue
+                        
+                        plt.title(f"Prédictions des Prix pour {ticker} ({model_type})")
+                        plt.xlabel(fig_data['layout'].get('xaxis', {}).get('title', {}).get('text', ''))
+                        plt.ylabel(fig_data['layout'].get('yaxis', {}).get('title', {}).get('text', ''))
+                        if has_valid_traces and any(trace.get('name') for trace in fig_data['data'] if trace.get('name')):
+                            plt.legend()
+                    else:
+                        logger.warning(f"Aucune donnée de trace pour {model_type}")
+                        st.warning(f"Impossible de générer l'image pour {model_type} : aucune donnée de trace.", icon="⚠️")
+                    
+                    if has_valid_traces:
+                        img_buffer = io.BytesIO()
+                        plt.savefig(img_buffer, format='png', bbox_inches='tight')
+                        plt.close()
+                        img_buffer.seek(0)
+                        st.download_button(
+                            label=f"Télécharger Prédictions ({model_type})",
+                            data=img_buffer,
+                            file_name=f"predictions_{ticker}_{model_type}.png",
+                            mime="image/png",
+                            use_container_width=True,
+                            key=f"download_pred_{model_type}_{uuid.uuid4()}"
+                        )
+                    else:
+                        st.warning(f"Impossible de générer l'image pour {model_type} : aucune donnée valide.", icon="⚠️")
+                    
+                    st.success(f"✅ Prédictions générées avec {model_type} !", icon="✅")
+                except Exception as e:
+                    st.error(f"Erreur lors de la prédiction avec {model_type} : {e}", icon="❌")
+                    logger.error(f"Erreur lors de la prédiction avec {model_type} : {e}")
 
     elif selected == "À propos":
         st.markdown("""
