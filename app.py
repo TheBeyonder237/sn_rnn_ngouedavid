@@ -193,10 +193,9 @@ MODEL_PARAMS = {
     'LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.2, 'lr': 0.001},
     'GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 3, 'dropout': 0.2, 'lr': 0.001},
     'Bidirectional LSTM': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
-    'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 128, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},
+    'Bidirectional GRU': {'seq_length': 20, 'hidden_size': 256, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001},  # Updated hidden_size
     'CNN-LSTM': {'seq_length': 20, 'hidden_size': 64, 'num_layers': 2, 'dropout': 0.3, 'lr': 0.001}
 }
-
 # Cached data download function (quiet mode)
 @st.cache_data(show_spinner=False)
 def download_data(_self, ticker, start_date, end_date):
@@ -497,16 +496,16 @@ class StockPricePredictor:
         self.scaler = MinMaxScaler()
 
     def load_data(self):
-        """Load and preprocess the stock data."""
         try:
             self.data = self.data_loader.download_data()
             if self.data is None or self.data.empty:
                 raise ValueError(f"Aucune donnée trouvée pour le ticker {self.ticker}")
+            logger.info(f"Colonnes des données : {list(self.data.columns)}")
             self.data = self.data_loader.preprocess_data(self.data)
-            logger.info(f"Données pour {self.ticker} chargées et prétraitées avec succès")
+            logger.info(f"Forme des données prétraitées : {self.data.shape}")
             return True
         except Exception as e:
-            logger.error(f"Erreur lors du chargement des données : {e}")
+            logger.error(f"Erreur lors du chargement")
             st.error(f"❌ Échec du chargement des données : {e}", icon="❌")
             return False
 
@@ -536,7 +535,7 @@ class StockPricePredictor:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model.eval()
         predictions = []
-        last_sequence = X[-1:]  # Take the last sequence for prediction
+        last_sequence = X[-1:]  # Shape: (1, seq_length, input_size)
         
         with torch.no_grad():
             for _ in range(future_steps):
@@ -546,14 +545,18 @@ class StockPricePredictor:
                 # Update the sequence with the predicted value
                 new_sequence = last_sequence[:, 1:, :].copy()
                 new_row = last_sequence[:, -1, :].copy()
-                new_row[0, 3] = pred  # Assuming 'Adj Close' is at index 3
+                new_row[0, -1] = pred  # Update 'Adj Close' (last feature)
                 last_sequence = np.concatenate([new_sequence, new_row[np.newaxis, np.newaxis, :]], axis=1)
         
         # Inverse transform predictions
-        predictions_array = np.array(predictions).reshape(-1, 1)
-        dummy_array = np.zeros((len(predictions), 5))  # For other features
-        predictions_full = np.concatenate([dummy_array, predictions_array], axis=1)
-        predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]
+        predictions_array = np.array(predictions).reshape(-1, 1)  # Shape: (future_steps, 1)
+        dummy_array = np.zeros((future_steps, 5))  # Shape: (future_steps, 5) for other features
+        predictions_full = np.hstack([dummy_array, predictions_array])  # Shape: (future_steps, 6)
+        try:
+            predictions_scaled = self.scaler.inverse_transform(predictions_full)[:, -1]  # Extract 'Adj Close'
+        except Exception as e:
+            logger.error(f"Erreur lors de l'inverse transform : {e}")
+            raise ValueError(f"Erreur lors de l'inverse transform : {e}")
         
         # Generate future dates
         last_date = self.data.index[-1]
@@ -568,7 +571,7 @@ def load_model(model_name, input_size, params):
         if input_size != 6:
             raise ValueError(f"6 caractéristiques d'entrée attendues, trouvé {input_size}. Assurez-vous que les données incluent 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'.")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if model_name.startswith('Bidirectional LSTM'):
+        if model_name == 'LSTM Bidirectionnel' or model_name == 'GRU Bidirectionnel':
             model_type = 'LSTM' if 'LSTM' in model_name else 'GRU'
             model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], model_type, params['dropout']).to(device)
         elif model_name == 'CNN-LSTM':
@@ -578,7 +581,14 @@ def load_model(model_name, input_size, params):
         model_path = f"saved_models/best_model_{model_name}.pth"
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Fichier de modèle {model_path} non trouvé. Assurez-vous que tous les fichiers de modèle sont dans le répertoire 'saved_models'.")
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        checkpoint = torch.load(model_path, map_location=device)
+        # Adjust for bidirectional GRU hidden size
+        if model_name == 'GRU Bidirectionnel':
+            if checkpoint['fc.weight'].shape[1] != params['hidden_size'] * 2:
+                logger.warning(f"Ajustement de la taille cachée pour GRU Bidirectionnel à {checkpoint['fc.weight'].shape[1] // 2}")
+                params['hidden_size'] = checkpoint['fc.weight'].shape[1] // 2
+                model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], 'GRU', params['dropout']).to(device)
+        model.load_state_dict(checkpoint)
         model.eval()
         logger.info(f"Modèle {model_name} chargé")
         return model, device
