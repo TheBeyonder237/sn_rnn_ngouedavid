@@ -450,63 +450,59 @@ class FinancialDataEDA:
         if isinstance(display_data.columns, pd.MultiIndex):
             # Tente de conserver le niveau le plus bas des colonnes (Open, High, Low, Close, Volume, Adj Close)
             # et supprime le niveau supérieur qui contient le ticker.
-            # get_level_values(1) suppose que les noms de colonnes sont au deuxième niveau (index 1)
-            # après le ticker qui est au premier niveau (index 0).
-            try:
-                display_data.columns = display_data.columns.get_level_values(1)
-            except IndexError:
-                # Si get_level_values(1) échoue (par exemple, s'il n'y a qu'un seul niveau),
-                # cela signifie que le ticker est le seul nom de colonne, ce qui est inattendu.
-                # Dans ce cas, nous devrons peut-être réinitialiser les noms de colonnes manuellement
-                # ou laisser tomber cette partie si cela ne s'applique pas au format yfinance habituel.
-                # Pour l'instant, log l'erreur et continue avec les colonnes existantes.
-                logger.warning("Le MultiIndex des colonnes n'a pas le niveau attendu 1. Les noms de colonnes pourraient rester inchangés.")
-                pass # Laisse les colonnes telles quelles si la conversion échoue
+            # yfinance retourne généralement (Ticker, Column_Name)
+            # Nous voulons les Column_Name (niveau 1).
+            # Assurez-vous que les noms de colonnes sont bien réassignés.
+            new_column_names = []
+            for col_tuple in display_data.columns:
+                # Assuming the actual column name is the last element of the tuple
+                new_column_names.append(col_tuple[-1])
+            display_data.columns = new_column_names
 
-        # --- Gérer les MultiIndex dans l'index des lignes (votre code existant) ---
-        # Cette section devrait s'assurer que l'index est une date unique sans le ticker.
+        # --- Gérer les MultiIndex dans l'index des lignes ---
+        # Cette section s'assure que l'index est une date unique sans le ticker.
         if isinstance(display_data.index, pd.MultiIndex):
             # Généralement, yfinance retourne (ticker, date) comme MultiIndex
             # Nous voulons garder la date et supprimer le ticker.
             # Le ticker est souvent au niveau 0 de l'index des lignes.
             if len(display_data.index.names) > 1:
-                # Si le nom du premier niveau est le ticker, on le supprime.
-                # Sinon, on assume que le ticker est le premier niveau sans nom explicite.
-                if display_data.index.names[0] == self.ticker or display_data.index.names[0] is None:
-                    display_data = display_data.reset_index(level=0, drop=True)
-                else:
-                    # Si le niveau 0 n'est pas le ticker, cela pourrait être une autre structure.
-                    # Pour être sûr, réinitialisez l'index complet et réglez la colonne 'Date' comme index.
-                    display_data = display_data.reset_index()
-                    if 'Date' in display_data.columns:
-                        display_data = display_data.set_index('Date')
-                    # Supprimez la colonne du ticker si elle est apparue après reset_index
-                    if self.ticker in display_data.columns:
-                        display_data = display_data.drop(columns=[self.ticker])
+                # On réinitialise l'index, ce qui transformera les niveaux de l'index en colonnes.
+                display_data = display_data.reset_index()
+                # On supprime la colonne qui correspond au ticker
+                if self.ticker in display_data.columns:
+                    display_data = display_data.drop(columns=[self.ticker])
+                # Puis on s'assure que 'Date' est bien l'index
+                if 'Date' in display_data.columns:
+                    display_data = display_data.set_index('Date')
             else:
-                # S'il n'y a qu'un seul niveau dans le MultiIndex, et c'est le ticker lui-même,
-                # alors le DataFrame est mal formé pour l'affichage de données de prix.
-                # Il faut alors juste réinitialiser l'index.
+                # Si c'est un MultiIndex avec un seul niveau qui est le ticker
                 display_data = display_data.reset_index(drop=True)
 
-
         # Si ce n'est pas un MultiIndex, mais l'index a un nom qui est le ticker.
-        # Cela gère le cas où l'index est un simple Index mais nommé avec le ticker.
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
             # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
-            if 'Date' in display_data.columns: # Vérifie si 'Date' existe après reset_index
+            if 'Date' in display_data.columns:
                 display_data = display_data.set_index('Date')
 
-        # Nettoyer les noms de colonnes pour les rendre uniques si des problèmes persistent
-        # Cela peut arriver si des colonnes comme 'Adj Close' et 'Close' sont dupliquées
-        # après une manipulation ou si la conversion du MultiIndex n'est pas parfaite.
-        cols = pd.Series(display_data.columns)
-        for dup in cols[cols.duplicated()].unique():
-            cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup
-                                                               for i in range(len(cols[cols == dup].index.values))]
-        display_data.columns = cols
-        
+        # Nettoyer les noms de colonnes pour les rendre uniques et standards
+        # Ceci est une étape de précaution si des problèmes de noms persistent,
+        # mais la logique ci-dessus devrait déjà avoir résolu le problème principal.
+        # Assurez-vous que les noms de colonnes sont ceux attendus (Open, High, Low, etc.)
+        expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        current_columns = list(display_data.columns)
+
+        # Si les colonnes ne sont pas ce que nous attendons (ex: ['TSLA', 'TSLA_1', ...])
+        # et que le nombre de colonnes correspond, on tente de les renommer.
+        if len(current_columns) == len(expected_columns) and \
+           not all(col in expected_columns for col in current_columns):
+            # Cela signifie que les noms actuels sont probablement les "TSLA", "TSLA_1", etc.
+            # et nous voulons les remplacer par les noms standards.
+            # On vérifie qu'il n'y a pas de vrais doublons parmi les noms attendus
+            if len(set(expected_columns)) == len(expected_columns):
+                rename_map = {current_columns[i]: expected_columns[i] for i in range(len(current_columns))}
+                display_data = display_data.rename(columns=rename_map)
+
         return display_data
 
 # Model loading function
