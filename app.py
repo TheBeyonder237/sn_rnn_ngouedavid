@@ -892,7 +892,7 @@ def main():
             start_date = st.date_input("Date de Début", value=pd.to_datetime("2020-01-01"))
             end_date = st.date_input("Date de Fin", value=pd.to_datetime("2023-12-31"))
             future_steps = st.number_input("Nombre de Jours à Prédire", min_value=1, max_value=30, value=10, step=1)
-            model_type = st.selectbox("Type de Modèle", ["LSTM", "GRU", "LSTM Bidirectionnel", "GRU Bidirectionnel", "CNN-LSTM"])
+            model_type = st.selectbox("Type de Modèle", ["LSTM", "GRU", "Bidirectional LSTM", "Bidirectional GRU", "CNN-LSTM"])
             submit = st.form_submit_button("Prédire")
 
         if submit:
