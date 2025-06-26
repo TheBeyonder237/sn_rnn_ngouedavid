@@ -446,63 +446,41 @@ class FinancialDataEDA:
             return None
         display_data = self.data.copy()
 
-        # --- Gérer les MultiIndex dans les colonnes (le problème 'TSLA', 'TSLA', ...) ---
+        # --- Débogage pour inspecter les colonnes initiales ---
+        logger.info(f"Colonnes initiales : {display_data.columns.tolist()}")
+
+        # --- Gérer les MultiIndex dans les colonnes ---
         if isinstance(display_data.columns, pd.MultiIndex):
-            # Tente de conserver le niveau le plus bas des colonnes (Open, High, Low, Close, Volume, Adj Close)
-            # et supprime le niveau supérieur qui contient le ticker.
-            # yfinance retourne généralement (Ticker, Column_Name)
-            # Nous voulons les Column_Name (niveau 1).
-            # Assurez-vous que les noms de colonnes sont bien réassignés.
-            new_column_names = []
-            for col_tuple in display_data.columns:
-                # Assuming the actual column name is the last element of the tuple
-                new_column_names.append(col_tuple[-1])
+            new_column_names = [col[-1] if isinstance(col, tuple) else col for col in display_data.columns]
             display_data.columns = new_column_names
 
         # --- Gérer les MultiIndex dans l'index des lignes ---
-        # Cette section s'assure que l'index est une date unique sans le ticker.
         if isinstance(display_data.index, pd.MultiIndex):
-            # Généralement, yfinance retourne (ticker, date) comme MultiIndex
-            # Nous voulons garder la date et supprimer le ticker.
-            # Le ticker est souvent au niveau 0 de l'index des lignes.
             if len(display_data.index.names) > 1:
-                # On réinitialise l'index, ce qui transformera les niveaux de l'index en colonnes.
                 display_data = display_data.reset_index()
-                # On supprime la colonne qui correspond au ticker
                 if self.ticker in display_data.columns:
                     display_data = display_data.drop(columns=[self.ticker])
-                # Puis on s'assure que 'Date' est bien l'index
                 if 'Date' in display_data.columns:
                     display_data = display_data.set_index('Date')
             else:
-                # Si c'est un MultiIndex avec un seul niveau qui est le ticker
                 display_data = display_data.reset_index(drop=True)
-
-        # Si ce n'est pas un MultiIndex, mais l'index a un nom qui est le ticker.
         elif hasattr(display_data.index, 'name') and display_data.index.name == self.ticker:
             display_data = display_data.reset_index(drop=True)
-            # Ensuite, définissez 'Date' comme index si elle est devenue une colonne
             if 'Date' in display_data.columns:
                 display_data = display_data.set_index('Date')
 
-        # Nettoyer les noms de colonnes pour les rendre uniques et standards
-        # Ceci est une étape de précaution si des problèmes de noms persistent,
-        # mais la logique ci-dessus devrait déjà avoir résolu le problème principal.
-        # Assurez-vous que les noms de colonnes sont ceux attendus (Open, High, Low, etc.)
-        expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-        current_columns = list(display_data.columns)
+        # --- Vérifier et corriger les doublons dans les colonnes ---
+        if not display_data.columns.is_unique:
+            logger.warning(f"Doublons détectés dans les colonnes : {display_data.columns[display_data.columns.duplicated()].tolist()}")
+            # Générer des noms de colonnes uniques en ajoutant un suffixe numérique si nécessaire
+            display_data = display_data.loc[:, ~display_data.columns.duplicated()]
+            # Réassigner les noms de colonnes attendus (Open, High, Low, Close, Adj Close, Volume)
+            expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+            if len(display_data.columns) == len(expected_columns):
+                display_data.columns = expected_columns
 
-        # Si les colonnes ne sont pas ce que nous attendons (ex: ['TSLA', 'TSLA_1', ...])
-        # et que le nombre de colonnes correspond, on tente de les renommer.
-        if len(current_columns) == len(expected_columns) and \
-           not all(col in expected_columns for col in current_columns):
-            # Cela signifie que les noms actuels sont probablement les "TSLA", "TSLA_1", etc.
-            # et nous voulons les remplacer par les noms standards.
-            # On vérifie qu'il n'y a pas de vrais doublons parmi les noms attendus
-            if len(set(expected_columns)) == len(expected_columns):
-                rename_map = {current_columns[i]: expected_columns[i] for i in range(len(current_columns))}
-                display_data = display_data.rename(columns=rename_map)
-
+        # --- Vérification finale ---
+        logger.info(f"Colonnes finales : {display_data.columns.tolist()}")
         return display_data
 
 # Model loading function
