@@ -704,33 +704,61 @@ def main():
                             has_valid_traces = False
                             if 'data' in fig_data and len(fig_data['data']) > 0:
                                 for trace in fig_data['data']:
-                                    if title == "Analyse des Rendements" and trace.get('type') == 'histogram':
-                                        # Use eda.returns values for histogram
+                                    trace_type = trace.get('type', '')
+                                    trace_name = trace.get('name', '')
+                                    logger.info(f"Processing trace: type={trace_type}, name={trace_name}")
+                                    
+                                    if title == "Analyse des Rendements" and trace_type == 'histogram':
+                                        # Use eda.returns for histogram
                                         if eda.returns is not None and not eda.returns.empty:
                                             hist_data = np.array(eda.returns.dropna())
                                             hist_bins = trace.get('nbinsx', 50)
                                             try:
                                                 counts, bins = np.histogram(hist_data, bins=hist_bins)
-                                                plt.stairs(counts, bins, label=trace.get('name', 'Histogram'), fill=True)
+                                                plt.stairs(counts, bins, label=trace_name or 'Histogram', fill=True)
                                                 has_valid_traces = True
-                                            except ValueError as e:
-                                                logger.error(f"Erreur lors du calcul de l'histogramme : {e}")
+                                            except (ValueError, TypeError) as e:
+                                                logger.error(f"Erreur lors du calcul de l'histogramme pour {title}: {e}")
                                                 continue
-                                    elif 'x' in trace and 'y' in trace:
-                                        # Handle scatter or line traces
+                                    elif trace_type == 'bar' and 'x' in trace and 'y' in trace:
+                                        # Handle bar traces (e.g., Volume des Transactions)
                                         try:
-                                            plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
-                                            has_valid_traces = True
+                                            x_data = np.array(trace['x'])
+                                            y_data = np.array(trace['y'])
+                                            if x_data.size > 0 and y_data.size > 0:
+                                                plt.bar(x_data, y_data, label=trace_name or 'Bar')
+                                                has_valid_traces = True
+                                            else:
+                                                logger.warning(f"Données vides pour la trace bar: {trace_name}")
                                         except (TypeError, ValueError) as e:
-                                            logger.error(f"Erreur lors du tracé de la courbe : {e}")
+                                            logger.error(f"Erreur lors du tracé de la barre pour {title}: {e}")
                                             continue
+                                    elif trace_type in ('scatter', 'heatmap') and 'x' in trace and 'y' in trace:
+                                        # Handle scatter or heatmap traces
+                                        try:
+                                            x_data = np.array(trace['x'])
+                                            y_data = np.array(trace['y'])
+                                            if x_data.size > 0 and y_data.size > 0:
+                                                plt.plot(x_data, y_data, label=trace_name or 'Scatter')
+                                                has_valid_traces = True
+                                            else:
+                                                logger.warning(f"Données vides pour la trace scatter/heatmap: {trace_name}")
+                                        except (TypeError, ValueError) as e:
+                                            logger.error(f"Erreur lors du tracé de la courbe pour {title}: {e}")
+                                            continue
+                                    else:
+                                        logger.warning(f"Type de trace non géré ou données invalides: {trace_type}")
+                                        continue
+                                    
                                 plt.title(title)
                                 plt.xlabel(fig_data['layout'].get('xaxis', {}).get('title', {}).get('text', ''))
                                 plt.ylabel(fig_data['layout'].get('yaxis', {}).get('title', {}).get('text', ''))
                                 if has_valid_traces and any(trace.get('name') for trace in fig_data['data'] if trace.get('name')):
                                     plt.legend()
                             else:
-                                st.warning(f"Impossible de générer l'image pour {title}.", icon="⚠️")
+                                logger.warning(f"Aucune donnée de trace pour {title}")
+                                st.warning(f"Impossible de générer l'image pour {title} : aucune donnée de trace.", icon="⚠️")
+                            
                             if has_valid_traces:
                                 img_buffer = io.BytesIO()
                                 plt.savefig(img_buffer, format='png', bbox_inches='tight')
