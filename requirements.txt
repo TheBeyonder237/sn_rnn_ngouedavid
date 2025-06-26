@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+yfinance
+matplotlib
+seaborn
+plotly
+scipy
+torch
+scikit-learn
+requests
+streamlit-lottie
