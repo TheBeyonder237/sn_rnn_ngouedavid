@@ -654,20 +654,6 @@ with st.sidebar:
             "nav-link-selected": {"background": "linear-gradient(90deg, #64748b, #475569)", "color": "#bae6fd"},
         }
     )
-    st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-    st.markdown("<div class='section-card'><h3 style='color:#bae6fd; font-size:1.4em;'>Configuration</h3></div>", unsafe_allow_html=True)
-    with st.form("config_form"):
-        config_key = st.text_input("Clé API (Optionnel)", type="password", placeholder="Entrez une clé API optionnelle")
-        if st.form_submit_button("Valider", use_container_width=True):
-            st.success("✅ Configuration validée (simulée)", icon="✅")
-    st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style='text-align: center; color: #f8fafc; font-size: 0.9em;'>
-        Développé par Ngôue David<br>
-        <a href='mailto:ngouedavidrogeryannick@gmail.com' style='color:#bae6fd;'>📧 Email</a><br>
-        <a href='https://github.com/TheBeyonder237' style='color:#bae6fd;'>🌐 GitHub</a>
-    </div>
-    """, unsafe_allow_html=True)
 
 # Main application
 def main():
