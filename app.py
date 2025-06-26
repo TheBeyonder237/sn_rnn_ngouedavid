@@ -26,6 +26,7 @@ logger.addHandler(logging.StreamHandler())  # Add custom handler
 logger.propagate = False  # Prevent propagation to root logger
 
 # Suppress yfinance output by redirecting stdout
+import sys
 class SuppressOutput:
     def __enter__(self):
         self._original_stdout = sys.stdout
@@ -231,14 +232,12 @@ class DataLoader:
         data = data[features]
         return pd.DataFrame(self.scaler.fit_transform(data), columns=features, index=data.index)
 
-    def create_sequences(self, seq_length):
-        if self.data is None or self.data.empty:
-            raise ValueError("Aucune donnée disponible pour créer des séquences.")
+    def create_sequences(self, data, seq_length):
         X, y = [], []
         price_column = 'Adj Close'
-        for i in range(len(self.data) - seq_length):
-            X.append(self.data.iloc[i:i + seq_length].values)
-            y.append(self.data.iloc[i + seq_length][price_column])
+        for i in range(len(data) - seq_length):
+            X.append(data.iloc[i:i + seq_length].values)
+            y.append(data.iloc[i + seq_length][price_column])
         return np.array(X), np.array(y)
 
 # RNN Model classes
@@ -306,7 +305,9 @@ class FinancialDataEDA:
             if self.data is None or self.data.empty:
                 raise ValueError(f"Aucune donnée trouvée pour le ticker")
             self.data = self.data.ffill()
-            # Do NOT flatten MultiIndex here; handle it in get_display_data
+            # Aplatir le MultiIndex si nécessaire
+            if isinstance(self.data.columns, pd.MultiIndex):
+                self.data.columns = self.data.columns.get_level_values(0)  # Prendre le premier niveau
             logger.info("Données EDA téléchargées avec succès")
             return True
         except Exception as e:
@@ -315,24 +316,11 @@ class FinancialDataEDA:
             return False
 
     def get_price_column(self):
-        if isinstance(self.data.columns, pd.MultiIndex):
-            available_columns = self.data.columns.get_level_values(0)
-            if 'Adj Close' in available_columns:
-                return ('Adj Close', self.ticker)
-            elif 'Close' in available_columns:
-                return ('Close', self.ticker)
-            else:
-                raise ValueError("Neither 'Adj Close' nor 'Close' found in data columns")
         return 'Adj Close' if 'Adj Close' in self.data.columns else 'Close'
 
     def calculate_returns(self):
-        try:
-            price_column = self.get_price_column()
-            self.returns = self.data[price_column].pct_change().dropna()
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul des rendements : {e}")
-            st.error(f"Erreur lors du calcul des rendements : {e}", icon="❌")
-            self.returns = None
+        price_column = self.get_price_column()
+        self.returns = self.data[price_column].pct_change().dropna()
 
     def basic_statistics(self):
         if self.data is None or self.data.empty:
@@ -343,14 +331,26 @@ class FinancialDataEDA:
             })
         
         price_column = self.get_price_column()
+        
+        # Handle MultiIndex columns
+        if isinstance(self.data.columns, pd.MultiIndex):
+            # Check if 'Adj Close' or 'Close' exists in the first level of MultiIndex
+            available_columns = self.data.columns.get_level_values(0)
+            if 'Adj Close' in available_columns:
+                price_column = ('Adj Close', self.ticker)
+            elif 'Close' in available_columns:
+                price_column = ('Close', self.ticker)
+            else:
+                raise ValueError("Neither 'Adj Close' nor 'Close' found in data columns")
+        
         price_stats = [
-            float(self.data[price_column].mean()),
-            float(self.data[price_column].std()),
-            float(self.data[price_column].min()),
-            float(self.data[price_column].max()),
-            float(self.data[price_column].median()),
-            float(stats.skew(self.data[price_column], nan_policy='omit')),
-            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))
+            float(self.data[price_column].mean()),  # Remove .iloc[0]
+            float(self.data[price_column].std()),   # Remove .iloc[0]
+            float(self.data[price_column].min()),   # Remove .iloc[0]
+            float(self.data[price_column].max()),   # Remove .iloc[0]
+            float(self.data[price_column].median()),  # Remove .iloc[0]
+            float(stats.skew(self.data[price_column], nan_policy='omit')),  # Remove [0]
+            float(stats.kurtosis(self.data[price_column], nan_policy='omit'))  # Remove [0]
         ]
         
         returns_stats = [
@@ -370,16 +370,13 @@ class FinancialDataEDA:
         })
 
     def plot_price_evolution(self):
-        if self.data is None:
-            return None
-        price_column = self.get_price_column()
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=self.data.index,
-            open=self.data[('Open', self.ticker) if isinstance(self.data.columns, pd.MultiIndex) else 'Open'],
-            high=self.data[('High', self.ticker) if isinstance(self.data.columns, pd.MultiIndex) else 'High'],
-            low=self.data[('Low', self.ticker) if isinstance(self.data.columns, pd.MultiIndex) else 'Low'],
-            close=self.data[price_column],
+            open=self.data['Open'],
+            high=self.data['High'],
+            low=self.data['Low'],
+            close=self.data[self.get_price_column()],
             name='OHLC'
         ))
         fig.update_layout(
@@ -392,11 +389,8 @@ class FinancialDataEDA:
         return fig
 
     def plot_volume(self):
-        if self.data is None:
-            return None
-        volume_column = ('Volume', self.ticker) if isinstance(self.data.columns, pd.MultiIndex) else 'Volume'
         fig = go.Figure()
-        fig.add_trace(go.Bar(x=self.data.index, y=self.data[volume_column], name='Volume'))
+        fig.add_trace(go.Bar(x=self.data.index, y=self.data['Volume'], name='Volume'))
         fig.update_layout(
             title="Volume des Transactions",
             yaxis_title="Volume",
@@ -424,14 +418,8 @@ class FinancialDataEDA:
         return fig
 
     def correlation_analysis(self):
-        if self.data is None:
-            return None, None
-        if isinstance(self.data.columns, pd.MultiIndex):
-            data = self.data.droplevel(1, axis=1)
-        else:
-            data = self.data
-        corr_matrix = data.corr()
-        fig = go.Figure(data=go.Heatmap(z=corr_matrix.values, x=corr_matrix.columns, y=corr_matrix.index, colorscale='RdBu'))
+        corr_matrix = self.data.corr()
+        fig = go.Figure(data=go.Heatmap(z=corr_matrix, x=corr_matrix.columns, y=corr_matrix.columns, colorscale='RdBu'))
         fig.update_layout(title="Matrice de Corrélation", template='plotly_white')
         return fig, corr_matrix
 
@@ -456,8 +444,9 @@ class FinancialDataEDA:
             stats_md += f"| {row['Statistique']} | {prix} | {rendements} |\n"
         price_column = self.get_price_column()
         
+        # Handle MultiIndex columns for display
         if isinstance(self.data.columns, pd.MultiIndex):
-            columns_str = [col[0] for col in self.data.columns]
+            columns_str = [col[0] for col in self.data.columns]  # Extract first level
         else:
             columns_str = [str(col) for col in self.data.columns]
             
@@ -476,13 +465,12 @@ class FinancialDataEDA:
         return report
 
     def get_display_data(self):
+        """Affiche les données avec les titres originaux."""
         if self.data is None or self.data.empty:
             return None
         display_data = self.data.copy()
         
-        if isinstance(display_data.columns, pd.MultiIndex):
-            display_data = display_data.droplevel(1, axis=1)
-        
+        # Gérer l'index des lignes si nécessaire
         if isinstance(display_data.index, pd.MultiIndex):
             if len(display_data.index.names) > 1:
                 level_to_drop = 0
@@ -499,61 +487,6 @@ class FinancialDataEDA:
         
         return display_data
 
-# StockPricePredictor class
-class StockPricePredictor:
-    def __init__(self, ticker, start_date, end_date):
-        self.ticker = ticker
-        self.start_date = start_date
-        self.end_date = end_date
-        self.data = None
-        self.scaler = MinMaxScaler()
-        self.data_loader = DataLoader(ticker, start_date, end_date)
-        self.download_data()
-
-    def download_data(self):
-        self.data = self.data_loader.download_data()
-        if self.data is not None and not self.data.empty:
-            self.data = self.data_loader.preprocess_data(self.data)
-
-    def load_model(self, model_type):
-        params = MODEL_PARAMS.get(model_type)
-        if not params:
-            raise ValueError(f"Type de modèle inconnu : {model_type}")
-        input_size = 6  # ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
-        return load_model(model_type, input_size, params)
-
-    def predict(self, model, future_steps=10):
-        if self.data is None or self.data.empty:
-            raise ValueError("Aucune donnée disponible pour la prédiction.")
-        
-        seq_length = MODEL_PARAMS[model.__class__.__name__.replace('Model', '')]['seq_length']
-        X, _ = self.data_loader.create_sequences(seq_length)
-        if len(X) == 0:
-            raise ValueError("Données insuffisantes pour créer des séquences de prédiction.")
-        
-        last_seq = X[-1].reshape(1, seq_length, -1)
-        device = next(model.parameters()).device
-        
-        future_preds = []
-        current_seq = last_seq.copy()
-        model.eval()
-        with torch.no_grad():
-            for _ in range(future_steps):
-                input_seq = torch.FloatTensor(current_seq).to(device)
-                pred = model(input_seq)
-                future_preds.append(pred.item())
-                current_seq = np.roll(current_seq, -1, axis=1)
-                current_seq[0, -1, -1] = pred.item()  # Update only Adj Close
-        
-        # Inverse transform predictions
-        dummy_array = np.zeros((len(future_preds), 6))
-        dummy_array[:, -1] = future_preds  # Only Adj Close
-        future_preds = self.data_loader.scaler.inverse_transform(dummy_array)[:, -1]
-        
-        last_date = self.data.index[-1]
-        future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=future_steps, freq='B')
-        return future_preds, future_dates
-
 # Model loading function
 @st.cache_resource
 def load_model(model_name, input_size, params):
@@ -562,10 +495,7 @@ def load_model(model_name, input_size, params):
             raise ValueError(f"6 caractéristiques d'entrée attendues, trouvé {input_size}. Assurez-vous que les données incluent 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'.")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if model_name.startswith('LSTM Bidirectionnel'):
-            model_type = 'LSTM'
-            model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], model_type, params['dropout']).to(device)
-        elif model_name.startswith('GRU Bidirectionnel'):
-            model_type = 'GRU'
+            model_type = 'LSTM' if 'LSTM' in model_name else 'GRU'
             model = BidirectionalRNNModel(input_size, params['hidden_size'], params['num_layers'], model_type, params['dropout']).to(device)
         elif model_name == 'CNN-LSTM':
             model = CNNLSTMModel(input_size, params['hidden_size'], params['num_layers']).to(device)
@@ -756,18 +686,6 @@ def main():
                     if display_data is not None:
                         st.dataframe(display_data.head(), use_container_width=True)
                     
-                    def to_numeric_array(data, name):
-                        if isinstance(data, (list, np.ndarray, pd.Series)):
-                            try:
-                                if data and isinstance(data[0], dict):
-                                    logger.warning(f"{name} contains dictionaries: {data[:5]}")
-                                    return np.array([])
-                                return np.array(data, dtype=np.float64 if not isinstance(data[0], pd.Timestamp) else object)
-                            except (TypeError, ValueError) as e:
-                                logger.error(f"Erreur conversion {name}: {e}")
-                                return np.array([])
-                        return np.array([])
-
                     for title, plot_func, filename in [
                         ("Évolution des Prix", eda.plot_price_evolution, "evolution_prix"),
                         ("Volume des Transactions", eda.plot_volume, "volume"),
@@ -780,6 +698,7 @@ def main():
                         fig = plot_func()
                         if fig:
                             st.plotly_chart(fig, use_container_width=True)
+                            # Exportation avec matplotlib
                             plt.figure(figsize=(10, 6))
                             fig_data = fig.to_dict()
                             has_valid_traces = False
@@ -789,9 +708,25 @@ def main():
                                     trace_name = trace.get('name', '')
                                     logger.info(f"Processing trace: type={trace_type}, name={trace_name}, keys={list(trace.keys())}")
                                     
+                                    # Convert x and y data to arrays, handling datetime and dictionaries
+                                    def to_numeric_array(data, name):
+                                        if isinstance(data, (list, np.ndarray, pd.Series)):
+                                            try:
+                                                if isinstance(data[0], dict):
+                                                    logger.warning(f"{name} contains dictionaries: {data[:5]}")
+                                                    return np.array([])
+                                                return np.array(data, dtype=np.float64 if not isinstance(data[0], pd.Timestamp) else object)
+                                            except (TypeError, ValueError) as e:
+                                                logger.error(f"Erreur conversion {name}: {e}")
+                                                return np.array([])
+                                        return np.array([])
+
                                     if trace_type == 'candlestick':
                                         try:
                                             x_data = to_numeric_array(trace.get('x', []), 'x')
+                                            open_data = to_numeric_array(trace.get('open', []), 'open')
+                                            high_data = to_numeric_array(trace.get('high', []), 'high')
+                                            low_data = to_numeric_array(trace.get('low', []), 'low')
                                             close_data = to_numeric_array(trace.get('close', []), 'close')
                                             if x_data.size > 0 and close_data.size > 0:
                                                 plt.plot(x_data, close_data, label=trace_name or 'Candlestick (Close)')
@@ -824,31 +759,26 @@ def main():
                                             except Exception as e:
                                                 logger.error(f"Erreur lors du calcul de l'histogramme pour {title}: {e}")
                                                 continue
-                                    elif trace_type == 'scatter':
+                                    elif trace_type in ('scatter', 'heatmap'):
                                         try:
                                             x_data = to_numeric_array(trace.get('x', []), 'x')
                                             y_data = to_numeric_array(trace.get('y', []), 'y')
-                                            if x_data.size > 0 and y_data.size > 0:
-                                                plt.plot(x_data, y_data, label=trace_name or 'Scatter', linestyle='-' if 'Ligne de Référence' in trace_name else 'o')
-                                                has_valid_traces = True
+                                            if trace_type == 'heatmap':
+                                                z_data = np.array(trace.get('z', []), dtype=object)
+                                                if x_data.size > 0 and y_data.size > 0 and z_data.size > 0:
+                                                    plt.imshow(z_data, aspect='auto', origin='lower')
+                                                    plt.colorbar(label=trace_name or 'Heatmap')
+                                                    has_valid_traces = True
+                                                else:
+                                                    logger.warning(f"Données vides pour la trace heatmap: {trace_name}")
                                             else:
-                                                logger.warning(f"Données vides pour la trace scatter: {trace_name}")
+                                                if x_data.size > 0 and y_data.size > 0:
+                                                    plt.plot(x_data, y_data, label=trace_name or 'Scatter')
+                                                    has_valid_traces = True
+                                                else:
+                                                    logger.warning(f"Données vides pour la trace scatter: {trace_name}")
                                         except Exception as e:
                                             logger.error(f"Erreur lors du tracé de la courbe pour {title}: {e}")
-                                            continue
-                                    elif trace_type == 'heatmap':
-                                        try:
-                                            x_data = to_numeric_array(trace.get('x', []), 'x')
-                                            y_data = to_numeric_array(trace.get('y', []), 'y')
-                                            z_data = np.array(trace.get('z', []), dtype=np.float64)
-                                            if x_data.size > 0 and y_data.size > 0 and z_data.size > 0:
-                                                plt.imshow(z_data, aspect='auto', origin='lower')
-                                                plt.colorbar(label=trace_name or 'Heatmap')
-                                                has_valid_traces = True
-                                            else:
-                                                logger.warning(f"Données vides pour la trace heatmap: {trace_name}")
-                                        except Exception as e:
-                                            logger.error(f"Erreur lors du tracé de la heatmap pour {title}: {e}")
                                             continue
                                     else:
                                         logger.warning(f"Type de trace non géré: {trace_type}")
@@ -881,14 +811,14 @@ def main():
                     st.success("✅ Analyse terminée !", icon="✅")
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    elif selected == "Prédictions":
+    elif selected == "Prédiction":
         st.markdown("<h2 style='color:#bae6fd;'>Prédiction des Prix des Actions</h2>", unsafe_allow_html=True)
         with st.form(key="prediction_form"):
             ticker = st.text_input("Symbole du Ticker", value="TSLA")
             start_date = st.date_input("Date de Début", value=pd.to_datetime("2020-01-01"))
             end_date = st.date_input("Date de Fin", value=pd.to_datetime("2023-12-31"))
             future_steps = st.number_input("Nombre de Jours à Prédire", min_value=1, max_value=30, value=10, step=1)
-            model_type = st.selectbox("Type de Modèle", ["LSTM", "GRU", "CNN-LSTM"])  # Excluded unavailable models
+            model_type = st.selectbox("Type de Modèle", ["LSTM", "GRU", "LSTM Bidirectionnel", "GRU Bidirectionnel", "CNN-LSTM"])
             submit = st.form_submit_button("Prédire")
 
         if submit:
@@ -902,9 +832,7 @@ def main():
                     st.markdown("<p style='color:#f8fafc; text-align:center;'>Chargement...</p>", unsafe_allow_html=True)
                 predictor = StockPricePredictor(ticker, start_date, end_date)
                 try:
-                    model_instance, device = predictor.load_model(model_type)
-                    if model_instance is None:
-                        return
+                    model_instance = predictor.load_model(model_type)
                     logger.info(f"Modèle {model_type} chargé")
                 except Exception as e:
                     st.error(f"Erreur lors du chargement du modèle {model_type} : {e}", icon="❌")
@@ -918,7 +846,7 @@ def main():
                     # Historical data
                     fig.add_trace(go.Scatter(
                         x=predictor.data.index,
-                        y=predictor.data_loader.scaler.inverse_transform(predictor.data)[:, -1],  # Inverse transform Adj Close
+                        y=predictor.data[price_column],
                         mode='lines',
                         name='Historique'
                     ))
@@ -939,18 +867,7 @@ def main():
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-                    def to_numeric_array(data, name):
-                        if isinstance(data, (list, np.ndarray, pd.Series)):
-                            try:
-                                if data and isinstance(data[0], dict):
-                                    logger.warning(f"{name} contains dictionaries: {data[:5]}")
-                                    return np.array([])
-                                return np.array(data, dtype=np.float64 if not isinstance(data[0], pd.Timestamp) else object)
-                            except (TypeError, ValueError) as e:
-                                logger.error(f"Erreur conversion {name}: {e}")
-                                return np.array([])
-                        return np.array([])
-
+                    # Exportation avec matplotlib
                     plt.figure(figsize=(10, 6))
                     fig_data = fig.to_dict()
                     has_valid_traces = False
