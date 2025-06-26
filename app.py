@@ -400,7 +400,7 @@ class FinancialDataEDA:
         return fig
 
     def correlation_analysis(self):
-        corr_matrix = self.data.corr(numeric_only=True) # Added numeric_only=True for robustness
+        corr_matrix = self.data.corr()
         fig = go.Figure(data=go.Heatmap(z=corr_matrix, x=corr_matrix.columns, y=corr_matrix.columns, colorscale='RdBu'))
         fig.update_layout(title="Matrice de Corrélation", template='plotly_white')
         return fig, corr_matrix
@@ -560,82 +560,145 @@ def display_data_processing_badge():
             100% { box-shadow: 0 0 8px #bae6fd; }
         }
         </style>
-        <div class="dp-badge card-fade" style="animation-delay: 0.2s;">
+        <div class="dp-badge">
             <div class="dp-dot"></div>
-            <span class="dp-text">Traitement des données en cours...</span>
+            <span class="dp-text">Traitement des Données : <span style="color:#00b894">ACTIF</span></span>
         </div>
         """, unsafe_allow_html=True
     )
 
-# Main application function
+# Sidebar
+with st.sidebar:
+    if main_animation:
+        st_lottie(main_animation, height=100, key="sidebar_animation")
+    else:
+        st.markdown("<p style='color:#f8fafc; text-align:center;'>Analyseur de Stocks</p>", unsafe_allow_html=True)
+    selected = option_menu(
+        menu_title="Navigation",
+        options=["Accueil", "EDA", "Prédictions", "À propos"],
+        icons=['house', 'graph-up', 'lightning-charge', 'info-circle'],
+        menu_icon="cast",
+        default_index=0,
+        styles={
+            "container": {"background": "linear-gradient(135deg, #334155, #475569)", "border-radius": "16px", "padding": "0.5rem"},
+            "icon": {"color": "#bae6fd", "font-size": "20px"},
+            "nav-link": {"color": "#f8fafc", "font-size": "16px", "padding": "10px", "border-radius": "12px"},
+            "nav-link-selected": {"background": "linear-gradient(90deg, #64748b, #475569)", "color": "#bae6fd"},
+        }
+    )
+    st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
+    st.markdown("<div class='section-card'><h3 style='color:#bae6fd; font-size:1.4em;'>Configuration</h3></div>", unsafe_allow_html=True)
+    with st.form("config_form"):
+        config_key = st.text_input("Clé API (Optionnel)", type="password", placeholder="Entrez une clé API optionnelle")
+        if st.form_submit_button("Valider", use_container_width=True):
+            st.success("✅ Configuration validée (simulée)", icon="✅")
+    st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='text-align: center; color: #f8fafc; font-size: 0.9em;'>
+        Développé par Ngôue David<br>
+        <a href='mailto:ngouedavidrogeryannick@gmail.com' style='color:#bae6fd;'>📧 Email</a><br>
+        <a href='https://github.com/TheBeyonder237' style='color:#bae6fd;'>🌐 GitHub</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Main application
 def main():
-    st.sidebar.title("Configuration")
-
-    with st.sidebar:
-        selected = option_menu(
-            menu_title="Navigation",
-            options=["Accueil", "Analyse Exploratoire des Données", "Prédiction", "À Propos"],
-            icons=["house", "bar-chart-line", "graph-up-arrow", "info-circle"],
-            menu_icon="cast",
-            default_index=0,
-            styles={
-                "container": {"padding": "0!important", "background-color": "#2a374c", "border-radius": "10px"},
-                "icon": {"color": "#bae6fd", "font-size": "20px"},
-                "nav-link": {"font-size": "18px", "text-align": "left", "margin": "0px", "--hover-color": "#334155", "color": "#f8fafc"},
-                "nav-link-selected": {"background-color": "#475569", "color": "#f8fafc"},
-            }
-        )
-
+    display_data_processing_badge()
+    
     if selected == "Accueil":
-        st.markdown("<h1 class='section-title' style='text-align: center;'>Bienvenue à l'Analyseur de Stocks et Prédictions RNN 📈</h1>", unsafe_allow_html=True)
-        st_lottie(main_animation, height=300, key="main_animation")
         st.markdown("""
-            <div class='section-card card-fade' style='animation-delay: 0.4s;'>
-                <h3 style='color:#bae6fd;'>Introduction</h3>
-                <p>Cette application vous permet d'analyser les données historiques des actions boursières et de prédire les prix futurs en utilisant des modèles de réseaux de neurones récurrents (RNN).</p>
-                <p>Naviguez à travers les différentes sections en utilisant le menu latéral pour explorer les données, obtenir des prédictions et en savoir plus sur l'application.</p>
-            </div>
-            <div class='section-card card-fade' style='animation-delay: 0.6s;'>
-                <h3 style='color:#bae6fd;'>Comment ça Marche ?</h3>
-                <ol style='color:#f8fafc;'>
-                    <li>Sélectionnez un onglet de navigation (par exemple, "Analyse Exploratoire des Données").</li>
-                    <li>Entrez le symbole boursier (ticker) et la période d'analyse.</li>
-                    <li>Visualisez les statistiques, les graphiques et les prédictions.</li>
-                    <li>Téléchargez les rapports et les graphiques pour une analyse plus approfondie.</li>
-                </ol>
-            </div>
+        <div class='section-card card-fade' style='text-align: center; max-width: 1000px; margin: auto;'>
+            <h1 class='section-title'>📈 Analyseur de Stocks</h1>
+            <p style='color: #f8fafc; font-size: 1.3em; margin-bottom: 1em;'>Analyse Financière Avancée Alimentée par l'IA</p>
+            <hr class='section-sep'/>
+            <p style='color: #f8fafc; font-size: 1.1em;'>Explorez les données boursières et prédisez les tendances futures avec des modèles RNN de pointe.</p>
+        </div>
         """, unsafe_allow_html=True)
-
-    elif selected == "Analyse Exploratoire des Données":
-        st.markdown("<h1 class='section-title' style='text-align: center;'>Analyse Exploratoire des Données (EDA)</h1>", unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1.5, 1])
         with col1:
-            ticker = st.text_input("Symbole Boursier (ex: AAPL, GOOGL, TSLA)", "TSLA").upper()
+            st.markdown("""
+            <div class='section-card card-fade'>
+                <h3 style='color:#bae6fd; font-size:1.5em;'>Mission</h3>
+                <p style='color:#f8fafc;'>Fournir des insights exploitables et des prédictions précises pour les marchés financiers grâce à l'apprentissage profond.</p>
+            </div>
+            <div class='section-card card-fade'>
+                <h3 style='color:#bae6fd; font-size:1.5em;'>Technologies</h3>
+                <span class='badge'>yfinance</span>
+                <span class='badge'>PyTorch</span>
+                <span class='badge'>Plotly</span>
+                <span class='badge'>Streamlit</span>
+            </div>
+            """, unsafe_allow_html=True)
         with col2:
-            today = datetime.now()
-            start_date = st.date_input("Date de Début", datetime(2022, 1, 1))
-            end_date = st.date_input("Date de Fin", today)
+            if main_animation:
+                st_lottie(main_animation, height=200, key="home_animation")
+            else:
+                st.markdown("<p style='color:#f8fafc; text-align:center;'>Bienvenue dans l'Analyseur de Stocks</p>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='metric-card card-fade' style='text-align: center;'>
+                <h3 style='color:#bae6fd; margin:0;'>100+</h3>
+                <p style='color:#f8fafc; margin:0;'>Actifs Analysables</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-        if start_date >= end_date:
-            st.error("La date de début doit être antérieure à la date de fin.", icon="🚫")
-            return
+    elif selected == "EDA":
+        st.markdown("""
+        <div class='section-card card-fade' style='max-width: 1000px; margin: auto;'>
+            <h1 class='section-title'>📊 Analyse Exploratoire des Données</h1>
+            <span class='badge'>yfinance</span>
+            <span class='badge'>Plotly</span>
+            <hr class='section-sep'/>
+            <p style='color:#f8fafc;'>Analysez les données historiques des stocks avec des visualisations et des statistiques complètes.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.form("eda_form"):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                ticker = st.text_input("Symbole de Ticker", value="TSLA", placeholder="ex. : TSLA")
+            with col2:
+                period = st.selectbox("Période", ["1 An", "2 Ans", "3 Ans", "Personnalisée"])
+            if period == "Personnalisée":
+                col3, col4 = st.columns(2)
+                with col3:
+                    start_date = st.date_input("Date de Début", datetime.now() - timedelta(days=2*365))
+                with col4:
+                    end_date = st.date_input("Date de Fin", datetime.now())
+            else:
+                years = {"1 An": 1, "2 Ans": 2, "3 Ans": 3}[period]
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=years*365)
+            submit = st.form_submit_button("Analyser", use_container_width=True)
 
-        eda = FinancialDataEDA(ticker, start_date, end_date)
-
-        if st.button("Lancer l'Analyse EDA", use_container_width=True):
-            with st.spinner("Téléchargement et préparation des données..."):
-                display_data_processing_badge()
-                if eda.download_data():
-                    eda.calculate_returns()
-                    st.success("✅ Données EDA téléchargées et prêtes !", icon="🎉")
-
+        if submit:
+            if not ticker.strip():
+                st.error("❌ Veuillez entrer un symbole de ticker valide.", icon="❌")
+                return
+            with st.spinner("Traitement des données..."):
+                if loading_animation:
+                    st_lottie(loading_animation, height=80, key=f"eda_loading_{uuid.uuid4()}")
+                else:
+                    st.markdown("<p style='color:#f8fafc; text-align:center;'>Chargement...</p>", unsafe_allow_html=True)
+                eda = FinancialDataEDA(ticker, start_date, end_date)
+                report = eda.generate_report()
+                if report:
+                    st.markdown("<div class='visual-card card-fade'>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='color:#bae6fd;'>Rapport d'Analyse</h3>", unsafe_allow_html=True)
+                    st.markdown(report, unsafe_allow_html=True)
+                    st.download_button(
+                        label="Télécharger le Rapport",
+                        data=report.encode('utf-8'),
+                        file_name=f"rapport_eda_{ticker}.md",
+                        mime="text/markdown",
+                        use_container_width=True,
+                        key=f"download_report_{uuid.uuid4()}"
+                    )
                     st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
                     st.markdown("<h3 style='color:#bae6fd;'>Aperçu des Données</h3>", unsafe_allow_html=True)
                     display_data = eda.get_display_data()
                     if display_data is not None:
                         st.dataframe(display_data.head(), use_container_width=True)
-
+                    
                     for title, plot_func, filename in [
                         ("Évolution des Prix", eda.plot_price_evolution, "evolution_prix"),
                         ("Volume des Transactions", eda.plot_volume, "volume"),
@@ -645,122 +708,167 @@ def main():
                     ]:
                         st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
                         st.markdown(f"<h3 style='color:#bae6fd;'>{title}</h3>", unsafe_allow_html=True)
-                        
-                        plotly_fig = plot_func() # Get the Plotly figure
-                        
-                        if plotly_fig:
-                            st.plotly_chart(plotly_fig, use_container_width=True)
-                            
-                            # --- Matplotlib Export Logic ---
-                            img_buffer = io.BytesIO()
-                            plt.figure(figsize=(10, 6)) # Create a new Matplotlib figure for each plot
-                            
-                            if title == "Évolution des Prix":
-                                price_column = eda.get_price_column()
-                                plt.plot(eda.data.index, eda.data[price_column], label=price_column, color='blue')
+                        fig = plot_func()
+                        if fig:
+                            st.plotly_chart(fig, use_container_width=True)
+                            # Exportation avec matplotlib
+                            plt.figure(figsize=(10, 6))
+                            fig_data = fig.to_dict()
+                            if 'data' in fig_data and len(fig_data['data']) > 0:
+                                for trace in fig_data['data']:
+                                    if 'x' in trace and 'y' in trace:
+                                        plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
                                 plt.title(title)
-                                plt.xlabel("Date")
-                                plt.ylabel("Prix ($)")
-                                plt.grid(True, linestyle='--', alpha=0.6)
+                                plt.xlabel(fig_data['layout'].get('xaxis_title', ''))
+                                plt.ylabel(fig_data['layout'].get('yaxis_title', ''))
                                 plt.legend()
-                            elif title == "Volume des Transactions":
-                                plt.bar(eda.data.index, eda.data['Volume'], color='skyblue')
-                                plt.title(title)
-                                plt.xlabel("Date")
-                                plt.ylabel("Volume")
-                                plt.grid(True, linestyle='--', alpha=0.6)
-                            elif title == "Analyse des Rendements":
-                                if eda.returns is not None and not eda.returns.empty:
-                                    plt.subplot(2, 1, 1) # Histogram
-                                    plt.hist(eda.returns.dropna(), bins=50, color='lightgreen', edgecolor='black')
-                                    plt.title('Distribution des Rendements')
-                                    plt.xlabel('Rendements')
-                                    plt.ylabel('Fréquence')
-                                    plt.grid(True, linestyle='--', alpha=0.6)
+                                img_buffer = io.BytesIO()
+                                plt.savefig(img_buffer, format='png', bbox_inches='tight')
+                                plt.close()
+                                img_buffer.seek(0)
+                                st.download_button(
+                                    label=f"Télécharger {title}",
+                                    data=img_buffer,
+                                    file_name=f"{filename}_{ticker}.png",
+                                    mime="image/png",
+                                    use_container_width=True,
+                                    key=f"download_{filename}_{uuid.uuid4()}"
+                                )
+                    st.success("✅ Analyse terminée !", icon="✅")
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-                                    plt.subplot(2, 1, 2) # QQ-Plot
-                                    stats.probplot(eda.returns.dropna(), dist="norm", plot=plt)
-                                    plt.title('QQ-Plot')
-                                    plt.tight_layout()
-                                else:
-                                    plt.text(0.5, 0.5, "Données de rendements non disponibles", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=12)
-
-                            elif title == "Matrice de Corrélation":
-                                _, corr_matrix = eda.correlation_analysis() # Get the corr_matrix
-                                if corr_matrix is not None and not corr_matrix.empty:
-                                    # Use imshow for heatmap
-                                    plt.imshow(corr_matrix.values, cmap='RdBu', interpolation='nearest')
-                                    plt.colorbar(label='Corrélation')
-                                    # Set ticks and labels
-                                    plt.xticks(range(len(corr_matrix.columns)), corr_matrix.columns, rotation=45, ha='right')
-                                    plt.yticks(range(len(corr_matrix.columns)), corr_matrix.columns)
-                                    plt.title(title)
-                                    plt.tight_layout()
-                                else:
-                                    plt.text(0.5, 0.5, "Matrice de corrélation non disponible", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=12)
-
-                            elif title == "Analyse de la Volatilité":
-                                if eda.returns is not None and not eda.returns.empty:
-                                    volatility = eda.returns.rolling(window=20).std() * np.sqrt(252)
-                                    plt.plot(volatility.index, volatility, label='Volatilité Annualisée', color='orange')
-                                    plt.title(title)
-                                    plt.xlabel("Date")
-                                    plt.ylabel("Volatilité")
-                                    plt.grid(True, linestyle='--', alpha=0.6)
-                                    plt.legend()
-                                else:
-                                    plt.text(0.5, 0.5, "Données de rendements non disponibles pour l'analyse de volatilité", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=12)
-
-                            plt.savefig(img_buffer, format='png', bbox_inches='tight')
-                            plt.close() # Close the Matplotlib figure to free up memory
-                            img_buffer.seek(0)
-                            st.download_button(
-                                label=f"Télécharger {title}",
-                                data=img_buffer,
-                                file_name=f"{filename}_{ticker}.png",
-                                mime="image/png",
-                                use_container_width=True,
-                                key=f"download_{filename}_{uuid.uuid4()}"
-                            )
-
-                    st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:#bae6fd;'>Statistiques Descriptives</h3>", unsafe_allow_html=True)
-                    st.dataframe(eda.basic_statistics(), use_container_width=True)
-
-                    st.markdown("<hr class='section-sep'/>", unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:#bae6fd;'>Rapport Complet</h3>", unsafe_allow_html=True)
-                    st.markdown(eda.generate_report(), unsafe_allow_html=True)
-
-    elif selected == "Prédiction":
-        st.markdown("<h1 class='section-title' style='text-align: center;'>Prédiction des Prix des Actions avec RNN</h1>", unsafe_allow_html=True)
-        st_lottie(loading_animation, height=200, key="loading_animation", speed=1.5)
-
-        st.info("Cette section est en cours de développement. Bientôt disponible pour des prédictions basées sur des modèles RNN !")
-
-        # Placeholder for Prediction section functionality
-        # ticker = st.text_input("Symbole Boursier (ex: AAPL)", "TSLA").upper()
-        # today = datetime.now()
-        # train_end_date = st.date_input("Date de Fin d'Entraînement", today - timedelta(days=90))
-        # forecast_horizon = st.slider("Horizon de Prédiction (jours)", 1, 30, 7)
-        # model_type = st.selectbox("Type de Modèle RNN", list(MODEL_PARAMS.keys()))
+    elif selected == "Prédictions":
+        st.markdown("""
+        <div class='section-card card-fade' style='max-width: 1000px; margin: auto;'>
+            <h1 class='section-title'>🔮 Prédictions Futures</h1>
+            <span class='badge'>RNN</span>
+            <span class='badge'>PyTorch</span>
+            <hr class='section-sep'/>
+            <p style='color:#f8fafc;'>Prédisez les prix futurs des stocks avec des modèles RNN avancés.</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # if st.button("Lancer la Prédiction", use_container_width=True):
-        #     st.warning("Fonctionnalité de prédiction non encore implémentée.", icon="⏳")
+        with st.form("pred_form"):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                ticker = st.text_input("Symbole de Ticker", value="TSLA", placeholder="ex. : TSLA")
+            with col2:
+                pred_weeks = st.slider("Horizon de Prédiction (Semaines)", 1, 12, 3)
+            model = st.selectbox("Sélectionner un Modèle", list(MODEL_PARAMS.keys()))
+            submit = st.form_submit_button("Prédire", use_container_width=True)
 
+        st.markdown("<div class='section-card card-fade'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#bae6fd;'>Paramètres du Modèle</h3>", unsafe_allow_html=True)
+        params = MODEL_PARAMS[model]
+        st.markdown(f"<span class='badge'>{model}</span>", unsafe_allow_html=True)
+        st.markdown(f"""
+        - Longueur de Séquence : {params['seq_length']}<br>
+        - Taille Cachée : {params['hidden_size']}<br>
+        - Couches : {params['num_layers']}<br>
+        - Dropout : {params['dropout']}<br>
+        - Taux d'Apprentissage : {params['lr']}
+        """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    elif selected == "À Propos":
-        st.markdown("<h1 class='section-title' style='text-align: center;'>À Propos de l'Application</h1>", unsafe_allow_html=True)
-        st_lottie(about_animation, height=200, key="about_animation")
+        if submit:
+            if not ticker.strip():
+                st.error("❌ Veuillez entrer un symbole de ticker valide.", icon="❌")
+                return
+            with st.spinner("Génération des prédictions..."):
+                if loading_animation:
+                    st_lottie(loading_animation, height=80, key=f"pred_loading_{uuid.uuid4()}")
+                else:
+                    st.markdown("<p style='color:#f8fafc; text-align:center;'>Chargement...</p>", unsafe_allow_html=True)
+                data_loader = DataLoader(ticker, datetime.now() - timedelta(days=2*365), datetime.now())
+                raw_data = data_loader.download_data()
+                if raw_data is None:
+                    return
+                processed_data = data_loader.preprocess_data(raw_data)
+                model_instance, device = load_model(model, processed_data.shape[1], params)
+                if model_instance is None:
+                    return
 
+                seq_length = params['seq_length']
+                future_steps = pred_weeks * 7
+                last_seq = processed_data.iloc[-seq_length:].values
+                future_preds = []
+                current_seq = last_seq.copy()
+
+                model_instance.eval()
+                with torch.no_grad():
+                    for _ in range(future_steps):
+                        input_seq = torch.FloatTensor(current_seq).unsqueeze(0).to(device)
+                        next_pred = model_instance(input_seq).cpu().numpy().squeeze()
+                        future_preds.append(next_pred)
+                        current_seq = np.vstack([current_seq[1:], np.append(current_seq[-1, :-1], next_pred)])
+
+                future_dates = pd.date_range(processed_data.index[-1] + pd.Timedelta(days=1), periods=future_steps)
+                future_preds_inv = data_loader.scaler.inverse_transform(
+                    np.concatenate([np.zeros((len(future_preds), processed_data.shape[1]-1)), np.array(future_preds).reshape(-1,1)], axis=1)
+                )[:,-1]
+
+                st.markdown("<div class='visual-card card-fade'>", unsafe_allow_html=True)
+                st.markdown("<h3 style='color:#bae6fd;'>Résultats des Prédictions</h3>", unsafe_allow_html=True)
+                fig = go.Figure()
+                price_col = 'Adj Close'
+                fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data[price_col], name='Historique'))
+                fig.add_trace(go.Scatter(x=future_dates, y=future_preds_inv, name='Prédit', line=dict(color='#bae6fd')))
+                fig.update_layout(title="Prédiction des Prix", xaxis_title="Date", yaxis_title="Prix ($)", template='plotly_white')
+                st.plotly_chart(fig, use_container_width=True)
+                # Exportation avec matplotlib
+                plt.figure(figsize=(10, 6))
+                fig_data = fig.to_dict()
+                if 'data' in fig_data and len(fig_data['data']) > 0:
+                    for trace in fig_data['data']:
+                        if 'x' in trace and 'y' in trace:
+                            plt.plot(trace['x'], trace['y'], label=trace.get('name', ''))
+                    plt.title("Prédiction des Prix")
+                    plt.xlabel("Date")
+                    plt.ylabel("Prix ($)")
+                    plt.legend()
+                    img_buffer = io.BytesIO()
+                    plt.savefig(img_buffer, format='png', bbox_inches='tight')
+                    plt.close()
+                    img_buffer.seek(0)
+                    st.download_button(
+                        label="Télécharger le Graphique de Prédiction",
+                        data=img_buffer,
+                        file_name=f"prediction_{ticker}.png",
+                        mime="image/png",
+                        use_container_width=True,
+                        key=f"download_pred_plot_{uuid.uuid4()}"
+                    )
+                pred_df = pd.DataFrame(future_preds_inv, index=future_dates, columns=['Prix Prédit'])
+                csv_buffer = io.StringIO()
+                pred_df.to_csv(csv_buffer)
+                st.download_button(
+                    label="Télécharger les Prédictions",
+                    data=csv_buffer.getvalue(),
+                    file_name=f"predictions_{ticker}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"download_pred_csv_{uuid.uuid4()}"
+                )
+                st.success("✅ Prédictions générées avec succès !", icon="✅")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+    elif selected == "À propos":
+        st.markdown("""
+        <div class='section-card card-fade' style='max-width: 1000px; margin: auto;'>
+            <h1 class='section-title'>🌟 À propos</h1>
+            <p style='color:#f8fafc;'>En savoir plus sur le créateur et la technologie derrière l'Analyseur de Stocks</p>
+            <hr class='section-sep'/>
+        </div>
+        """, unsafe_allow_html=True)
         col1, col2 = st.columns([1, 2])
         with col1:
+            if about_animation:
+                st_lottie(about_animation, height=200, key="about_animation")
+            else:
+                st.markdown("<p style='color:#f8fafc; text-align:center;'>À propos de l'Analyseur de Stocks</p>", unsafe_allow_html=True)
+            st.image("https://avatars.githubusercontent.com/u/TheBeyonder237", width=150, caption="Ngôue David")
             st.markdown("""
-            <div class='section-card card-fade'>
-                <h3 style='color:#bae6fd;'>Contexte</h3>
-                <p>Cette application a été développée pour démontrer l'application des Réseaux de Neurones Récurrents (RNN) à l'analyse et à la prédiction des séries temporelles financières.</p>
-                <p>Elle utilise les bibliothèques Python populaires telles que Streamlit pour l'interface utilisateur, yfinance pour les données financières, Plotly et Matplotlib pour les visualisations, et PyTorch pour les modèles de Deep Learning.</p>
-                <h3 style='color:#bae6fd;'>Contact</h3>
-                <img src="https://avatars.githubusercontent.com/u/79965048?v=4" class="about-avatar" width="150" height="150" style="margin-bottom: 1em;">
+            <div style='text-align:center;'>
                 <button class='about-contact-btn' onclick="window.open('mailto:ngouedavidrogeryannick@gmail.com')">Email</button>
                 <button class='about-contact-btn' onclick="window.open('https://github.com/TheBeyonder237')">GitHub</button>
             </div>
@@ -784,7 +892,6 @@ def main():
             </div>
             """, unsafe_allow_html=True)
         st.markdown("<div style='text-align: center; color: #f8fafc; padding: 1em;'>Développé par Ngôue David</div>", unsafe_allow_html=True)
-
 
 if __name__ == "__main__":
     main()
